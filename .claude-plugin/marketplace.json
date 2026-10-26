@@ -1,0 +1,22 @@
+{
+  "name": "victorsaly",
+  "description": "Victor Saly's skills for Claude Code: habits from building agentic-blog, made reusable in any project.",
+  "owner": {
+    "name": "Victor Saly",
+    "url": "https://github.com/victorsaly"
+  },
+  "plugins": [
+    {
+      "name": "pr-shots",
+      "source": "./plugins/pr-shots",
+      "description": "Before-and-after screenshots for pull requests that change what people see: desk and phone, light and dark, kept on a pr-screenshots branch and put in the PR description.",
+      "category": "development",
+      "tags": [
+        "pull-requests",
+        "screenshots",
+        "review",
+        "playwright"
+      ]
+    }
+  ]
+}
