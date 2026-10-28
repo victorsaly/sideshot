@@ -125,6 +125,17 @@ describe('draw.mjs', () => {
     assert.ok(runs[0].left >= 440, `marked from column ${runs[0].left}, in the left card`);
   });
 
+  it('rules where a thin thing in a column of its own was taken out, visibly', async () => {
+    // A 12-pixel bar beside a block, a gutter between them: taken out, its column is 12 pixels wide.
+    const was = { width: 400, height: 140, rects: [[40, 30, 200, 60, '#222222'], [260, 30, 12, 60, '#cc3300']] };
+    const now = { width: 400, height: 140, rects: [[40, 30, 200, 60, '#222222']] };
+    const { changed, runs } = await marked(was, now);
+    assert.equal(changed, 1, JSON.stringify(runs));
+    assert.equal(runs.length, 1, JSON.stringify(runs));
+    assert.ok(runs[0].right - runs[0].left >= 10, `a rule ${runs[0].right - runs[0].left} pixels long`);
+    assert.ok(runs[0].left >= 255, `ruled from column ${runs[0].left}, into the block`);
+  });
+
   it('does not mark what only moved down because something was added above it', async () => {
     const was = { width: 400, height: 140, rects: [[40, 30, 200, 20, '#222222']] };
     const now = { width: 400, height: 140, rects: [[40, 30, 120, 20, '#cc3300'], [40, 70, 200, 20, '#222222']] };

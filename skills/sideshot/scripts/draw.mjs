@@ -161,9 +161,14 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
         if (bx1 >= 0 && btm - t >= 2) boxes.push([bx0, t, bx1 + 1, btm + 1]);
         y = y1;
       }
-      // Where something was only taken out, a short rule marks the place it was, within the column.
+      // Where something was only taken out, a short rule marks the place it was, within the column: inset by
+      // less in a narrow column, and never shorter than 12 pixels, so a thin thing taken out still shows.
       const rules = [...new Set(cuts)].filter((y) => !added[y] && !added[Math.max(0, y - 1)]);
-      return { boxes, rules: rules.map((y) => [y, x0 + 6, Math.min(x1 - 6, x0 + 600)]) };
+      const inset = Math.min(6, Math.floor(cw / 4));
+      return {
+        boxes,
+        rules: rules.map((y) => [y, x0 + inset, Math.max(x0 + inset + 12, Math.min(x1 - inset, x0 + 600))]),
+      };
     };
     const marks = columnsOf().map(marksIn);
     const boxes = marks.flatMap((mk) => mk.boxes), rules = marks.flatMap((mk) => mk.rules);
