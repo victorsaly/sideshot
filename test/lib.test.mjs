@@ -183,6 +183,8 @@ describe('optionsOf', () => {
     refused([...base, '--devices', ','], /Cannot read --devices/);
     refused([...base, '--devices', 'toString'], /Cannot read --devices/);
     refused([...base, '--schemes', 'sepia'], /Cannot read --schemes/);
+    refused([...base, '--schemes', 'light,drak'], /Cannot read --schemes light,drak/);
+    refused(base, /Cannot read --schemes/, { schemes: ['dark', 'sepia'] });
   });
   it('reads the accent by name, as a colour, or auto', () => {
     assert.equal(asked('--accent', 'Magenta').accent, swatches.magenta);
@@ -276,5 +278,14 @@ describe('bodyWith', () => {
   it('adds a new table, and loses nothing, when the end marker was taken out', () => {
     const body = `${start}\nold, by hand`;
     assert.equal(bodyWith(body, 'T'), `${body}\n\n${start}\nT\n${end}\n`);
+  });
+  it('still loses nothing on the runs after that', () => {
+    const body = `${start}\nold, by hand`;
+    const once = bodyWith(body, 'T1');
+    assert.equal(bodyWith(once, 'T2'), `${body}\n\n${start}\nT2\n${end}\n`);
+  });
+  it('replaces a table whose start marker was taken out, after the end of an earlier one', () => {
+    const body = `old, by hand\n${end}\n\n${start}\nT1\n${end}\n`;
+    assert.equal(bodyWith(body, 'T2'), `old, by hand\n${end}\n\n${start}\nT2\n${end}\n`);
   });
 });

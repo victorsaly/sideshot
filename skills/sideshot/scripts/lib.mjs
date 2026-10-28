@@ -185,8 +185,9 @@ export function optionsOf(args, config = {}) {
   const chosen = devicesOf(all('--devices')[0], config.devices);
 
   const schemeSpecs = list('--schemes', 'schemes', ['light']);
+  // A typo among them is said, not dropped: light,drak would otherwise quietly picture light alone.
   const schemes = schemeSpecs.filter((s) => s === 'light' || s === 'dark');
-  if (schemes.length === 0)
+  if (schemes.length === 0 || schemes.length < schemeSpecs.length)
     throw new UsageError(`Cannot read --schemes ${schemeSpecs.join(',')}. Use light, dark, or light,dark.`);
 
   const waitText = one('--wait', 'wait', '1500');
@@ -282,9 +283,15 @@ export function tableOf({ parts, chosen, schemes, notes, files, before, after, p
 export function bodyWith(body, table) {
   const { start, end } = markers;
   const block = `${start}\n${table.replaceAll(start, '').replaceAll(end, '')}\n${end}`;
-  const from = body.indexOf(start);
-  const to = from === -1 ? -1 : body.indexOf(end, from);
-  if (to !== -1) return body.slice(0, from) + block + body.slice(to + end.length);
+  // The table is the first end marker and the start marker nearest before it, so a marker left alone after
+  // a hand edit never pairs with one of a later table and takes the words between them.
+  let to = body.indexOf(end);
+  let from = to === -1 ? -1 : body.lastIndexOf(start, to);
+  while (to !== -1 && from === -1) {
+    to = body.indexOf(end, to + end.length);
+    from = to === -1 ? -1 : body.lastIndexOf(start, to);
+  }
+  if (from !== -1) return body.slice(0, from) + block + body.slice(to + end.length);
   const rest = body.trimEnd();
   return rest === '' ? `${block}\n` : `${rest}\n\n${block}\n`;
 }
