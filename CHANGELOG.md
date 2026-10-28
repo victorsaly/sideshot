@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- `--mark-changes` marks only the card that changed when cards sit side by side. Where both pictures have an
+  empty gutter from top to bottom, each column is compared on its own; before, a card that grew boxed the rows
+  of the card beside it too. A picture with no such gutter is compared across its width, as before.
+
 ## 0.5.1 (2026-10-28)
 
 - In a project with no `origin`, git's own "No such remote 'origin'" no longer shows on every run. git is still

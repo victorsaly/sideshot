@@ -45,99 +45,133 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
   let changed = 0;
   if (before) {
     const a = await load(before);
-    // Rows are lined up the way a text diff lines up lines, so content that only moved (something above it
-    // was added or taken out) is not marked; what was added or changed is boxed, what was taken out is a rule.
-    // A stretch of identical rows (blank page, the empty inside of a card) is lined up as one, whatever its
-    // height: space that only grew or shrank then lines up with itself, never with content.
-    const rowsOf = (img) => {
+    const pixelsOf = (img) => {
       const oc = new OffscreenCanvas(img.width, img.height), ox = oc.getContext('2d');
       ox.drawImage(img, 0, 0);
-      const d = ox.getImageData(0, 0, img.width, img.height).data, hashes = new Uint32Array(img.height);
-      for (let y = 0; y < img.height; y++) {
-        let h = 2166136261;
-        for (let i = y * img.width * 4, e = i + img.width * 4; i < e; i += 4)
-          h = Math.imul(h ^ ((d[i] >> 3) | ((d[i + 1] >> 3) << 5) | ((d[i + 2] >> 3) << 10)), 16777619);
-        hashes[y] = h >>> 0;
+      return { d: ox.getImageData(0, 0, img.width, img.height).data, w: img.width, h: img.height };
+    };
+    const A = pixelsOf(a), B = pixelsOf(b);
+    // Columns: where both pictures are background from top to bottom (a gutter between two cards, 16 pixels or
+    // wider), each side is compared on its own, so a card that grew does not mark the card beside it. A picture
+    // with no such gutter is one column, the whole width, as it always was.
+    const columnsOf = () => {
+      if (A.w !== B.w) return [[0, B.w]];
+      const isBg = (P, k) => Math.abs(P.d[k] - P.d[0]) + Math.abs(P.d[k + 1] - P.d[1]) + Math.abs(P.d[k + 2] - P.d[2]) <= 12;
+      const spans = [];
+      let from = -1;
+      for (let xx = 0; xx <= B.w; xx++) {
+        let ink = false;
+        if (xx < B.w)
+          for (const P of [A, B])
+            for (let yy = 0; yy < P.h && !ink; yy++) if (!isBg(P, (yy * P.w + xx) * 4)) ink = true;
+        if (ink && from === -1) from = xx;
+        if (!ink && from !== -1) { spans.push([from, xx]); from = -1; }
       }
-      return { d, hashes, w: img.width, h: img.height };
-    };
-    const runsOf = (hashes) => {
-      const runs = [];
-      for (let y = 0; y < hashes.length; y++) {
-        const last = runs[runs.length - 1];
-        if (last && last.hash === hashes[y]) last.end = y + 1;
-        else runs.push({ hash: hashes[y], start: y, end: y + 1 });
+      const cols = [];
+      for (const span of spans) {
+        const last = cols[cols.length - 1];
+        if (last && span[0] - last[1] < 16) last[1] = span[1];
+        else cols.push(span);
       }
-      return runs;
+      return cols.length > 1 ? cols : [[0, B.w]];
     };
-    const A = rowsOf(a), B = rowsOf(b), RA = runsOf(A.hashes), RB = runsOf(B.hashes);
-    const n = RA.length, m = RB.length, L = new Uint32Array((n + 1) * (m + 1));
-    const same = (i, j) => RA[i].hash === RB[j].hash && A.w === B.w;
-    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
-      L[i * (m + 1) + j] = same(i, j)
-        ? L[(i + 1) * (m + 1) + j + 1] + 1
-        : Math.max(L[(i + 1) * (m + 1) + j], L[i * (m + 1) + j + 1]);
-    // A row is content when it carries ink, against the picture's background, across a good part of the width
-    // (5%, more than a card's borders); otherwise it is space: blank page, the empty inside of a card.
-    const isContent = (P, y) => {
-      let inked = 0;
-      for (let k = y * P.w * 4, e = k + P.w * 4; k < e; k += 4)
-        if (Math.abs(P.d[k] - P.d[0]) + Math.abs(P.d[k + 1] - P.d[1]) + Math.abs(P.d[k + 2] - P.d[2]) > 60) inked++;
-      return inked > P.w * 0.05;
-    };
-    // What was taken out is ruled when it was content, even if like rows still show elsewhere (one of two like
-    // blocks), or when its rows are nowhere in "after"; space that only shrank is not.
-    const inAfter = new Set(B.hashes);
-    const added = new Uint8Array(B.h), cuts = [];
-    const cut = (run, y) => { if (isContent(A, run.start) || !inAfter.has(run.hash)) cuts.push(y); };
-    // A stretch that lined up but changed height is space that grew or shrank, unless it is content, a bar or a
-    // button: then its new height is a change.
-    let i = 0, j = 0;
-    while (i < n && j < m) {
-      if (same(i, j)) {
-        const was = RA[i].end - RA[i].start, now = RB[j].end - RB[j].start;
-        if (was !== now && isContent(B, RB[j].start)) {
-          if (now > was) added.fill(1, RB[j].start, RB[j].end);
-          else cuts.push(RB[j].end);
+    // Within a column, rows are lined up the way a text diff lines up lines, so content that only moved
+    // (something above it was added or taken out) is not marked; what was added or changed is boxed, what was
+    // taken out is a rule. A stretch of identical rows (blank page, the empty inside of a card) is lined up as
+    // one, whatever its height: space that only grew or shrank then lines up with itself, never with content.
+    const marksIn = ([x0, x1]) => {
+      const cw = x1 - x0;
+      const hashesOf = (P) => {
+        const hashes = new Uint32Array(P.h);
+        for (let y = 0; y < P.h; y++) {
+          let h = 2166136261;
+          for (let i = (y * P.w + x0) * 4, e = i + cw * 4; i < e; i += 4)
+            h = Math.imul(h ^ ((P.d[i] >> 3) | ((P.d[i + 1] >> 3) << 5) | ((P.d[i + 2] >> 3) << 10)), 16777619);
+          hashes[y] = h >>> 0;
         }
-        i++; j++;
-      }
-      else if (L[(i + 1) * (m + 1) + j] >= L[i * (m + 1) + j + 1]) { cut(RA[i], RB[j].start); i++; }
-      else { added.fill(1, RB[j].start, RB[j].end); j++; }
-    }
-    for (; j < m; j++) added.fill(1, RB[j].start, RB[j].end);
-    for (; i < n; i++) cut(RA[i], B.h - 1);
-    // What was added is boxed around what differs from the unchanged row next to it (above, or below at the
-    // top), not from the background: a card's border runs down both, so it does not stretch the box.
-    const boxes = [];
-    for (let y = 0; y < B.h; y++) {
-      if (!added[y]) continue;
-      let y1 = y;
-      while (y1 + 1 < B.h && added[y1 + 1]) y1++;
-      const ref = y > 0 ? y - 1 : y1 + 1 < B.h ? y1 + 1 : -1;
-      const differs = (yy, xx) => {
-        const k = (yy * B.w + xx) * 4, r = ref === -1 ? 0 : (ref * B.w + xx) * 4;
-        return Math.abs(B.d[k] - B.d[r]) + Math.abs(B.d[k + 1] - B.d[r + 1]) + Math.abs(B.d[k + 2] - B.d[r + 2]) > 60;
+        return hashes;
       };
-      let x0 = B.w, x1 = -1, t = -1, btm = -1;
-      for (let yy = y; yy <= y1; yy++)
-        for (let xx = 0; xx < B.w; xx++)
-          if (differs(yy, xx)) {
-            if (xx < x0) x0 = xx;
-            if (xx > x1) x1 = xx;
-            if (t === -1) t = yy;
-            btm = yy;
+      const runsOf = (hashes) => {
+        const runs = [];
+        for (let y = 0; y < hashes.length; y++) {
+          const last = runs[runs.length - 1];
+          if (last && last.hash === hashes[y]) last.end = y + 1;
+          else runs.push({ hash: hashes[y], start: y, end: y + 1 });
+        }
+        return runs;
+      };
+      const HA = hashesOf(A), HB = hashesOf(B), RA = runsOf(HA), RB = runsOf(HB);
+      const n = RA.length, m = RB.length, L = new Uint32Array((n + 1) * (m + 1));
+      const same = (i, j) => RA[i].hash === RB[j].hash && A.w === B.w;
+      for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
+        L[i * (m + 1) + j] = same(i, j)
+          ? L[(i + 1) * (m + 1) + j + 1] + 1
+          : Math.max(L[(i + 1) * (m + 1) + j], L[i * (m + 1) + j + 1]);
+      // A row is content when it carries ink, against the picture's background, across a good part of the
+      // column (5%, more than a card's borders); otherwise it is space: blank page, the empty inside of a card.
+      const isContent = (P, y) => {
+        let inked = 0;
+        for (let k = (y * P.w + x0) * 4, e = k + cw * 4; k < e; k += 4)
+          if (Math.abs(P.d[k] - P.d[0]) + Math.abs(P.d[k + 1] - P.d[1]) + Math.abs(P.d[k + 2] - P.d[2]) > 60) inked++;
+        return inked > cw * 0.05;
+      };
+      // What was taken out is ruled when it was content, even if like rows still show elsewhere (one of two like
+      // blocks), or when its rows are nowhere in "after"; space that only shrank is not.
+      const inAfter = new Set(HB);
+      const added = new Uint8Array(B.h), cuts = [];
+      const cut = (run, y) => { if (isContent(A, run.start) || !inAfter.has(run.hash)) cuts.push(y); };
+      // A stretch that lined up but changed height is space that grew or shrank, unless it is content, a bar or
+      // a button: then its new height is a change.
+      let i = 0, j = 0;
+      while (i < n && j < m) {
+        if (same(i, j)) {
+          const was = RA[i].end - RA[i].start, now = RB[j].end - RB[j].start;
+          if (was !== now && isContent(B, RB[j].start)) {
+            if (now > was) added.fill(1, RB[j].start, RB[j].end);
+            else cuts.push(RB[j].end);
           }
-      if (x1 >= 0 && btm - t >= 2) boxes.push([x0, t, x1 + 1, btm + 1]);
-      y = y1;
-    }
-    // Where something was only taken out, a short rule marks the place it was.
-    const rules = [...new Set(cuts)].filter((y) => !added[y] && !added[Math.max(0, y - 1)]);
+          i++; j++;
+        }
+        else if (L[(i + 1) * (m + 1) + j] >= L[i * (m + 1) + j + 1]) { cut(RA[i], RB[j].start); i++; }
+        else { added.fill(1, RB[j].start, RB[j].end); j++; }
+      }
+      for (; j < m; j++) added.fill(1, RB[j].start, RB[j].end);
+      for (; i < n; i++) cut(RA[i], B.h - 1);
+      // What was added is boxed around what differs from the unchanged row next to it (above, or below at the
+      // top), not from the background: a card's border runs down both, so it does not stretch the box.
+      const boxes = [];
+      for (let y = 0; y < B.h; y++) {
+        if (!added[y]) continue;
+        let y1 = y;
+        while (y1 + 1 < B.h && added[y1 + 1]) y1++;
+        const ref = y > 0 ? y - 1 : y1 + 1 < B.h ? y1 + 1 : -1;
+        const differs = (yy, xx) => {
+          const k = (yy * B.w + xx) * 4, r = ref === -1 ? 0 : (ref * B.w + xx) * 4;
+          return Math.abs(B.d[k] - B.d[r]) + Math.abs(B.d[k + 1] - B.d[r + 1]) + Math.abs(B.d[k + 2] - B.d[r + 2]) > 60;
+        };
+        let bx0 = x1, bx1 = -1, t = -1, btm = -1;
+        for (let yy = y; yy <= y1; yy++)
+          for (let xx = x0; xx < x1; xx++)
+            if (differs(yy, xx)) {
+              if (xx < bx0) bx0 = xx;
+              if (xx > bx1) bx1 = xx;
+              if (t === -1) t = yy;
+              btm = yy;
+            }
+        if (bx1 >= 0 && btm - t >= 2) boxes.push([bx0, t, bx1 + 1, btm + 1]);
+        y = y1;
+      }
+      // Where something was only taken out, a short rule marks the place it was, within the column.
+      const rules = [...new Set(cuts)].filter((y) => !added[y] && !added[Math.max(0, y - 1)]);
+      return { boxes, rules: rules.map((y) => [y, x0 + 6, Math.min(x1 - 6, x0 + 600)]) };
+    };
+    const marks = columnsOf().map(marksIn);
+    const boxes = marks.flatMap((mk) => mk.boxes), rules = marks.flatMap((mk) => mk.rules);
     x.lineWidth = 6; x.strokeStyle = colour;
     for (const [l, t, r, btm] of boxes) { x.beginPath(); x.roundRect(Math.max(3, l - 8), Math.max(3, t - 8), r - l + 16, btm - t + 16, 12); x.stroke(); }
     x.setLineDash([14, 8]);
     // A little above the line that follows, so the rule sits in the gap rather than on the words.
-    for (const y of rules) { const ry = Math.max(4, y - 8); x.beginPath(); x.moveTo(6, ry); x.lineTo(Math.min(b.width - 6, 600), ry); x.stroke(); }
+    for (const [y, from, to] of rules) { const ry = Math.max(4, y - 8); x.beginPath(); x.moveTo(from, ry); x.lineTo(Math.min(b.width - 6, to), ry); x.stroke(); }
     x.setLineDash([]);
     changed = boxes.length + rules.length;
   }

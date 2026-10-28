@@ -112,6 +112,19 @@ describe('draw.mjs', () => {
     assert.ok(box.top >= 76 && box.bottom <= 124, `box spans rows ${box.top} to ${box.bottom}`);
   });
 
+  it('marks only the card that changed when two sit side by side', async () => {
+    // Two cards in a row, the right one given a badge that makes it taller: rows across both differ from the
+    // badge down, though the left card is as it was.
+    const row = (badge) => {
+      const left = card(false), right = card(badge);
+      return { width: 840, height: 180, rects: [...left.rects, ...right.rects.map(([l, ...rest]) => [Number(l) + 440, ...rest])] };
+    };
+    const { changed, runs } = await marked(row(false), row(true));
+    assert.equal(changed, 1, JSON.stringify(runs));
+    assert.equal(runs.length, 1, JSON.stringify(runs));
+    assert.ok(runs[0].left >= 440, `marked from column ${runs[0].left}, in the left card`);
+  });
+
   it('does not mark what only moved down because something was added above it', async () => {
     const was = { width: 400, height: 140, rects: [[40, 30, 200, 20, '#222222']] };
     const now = { width: 400, height: 140, rects: [[40, 30, 120, 20, '#cc3300'], [40, 70, 200, 20, '#222222']] };
