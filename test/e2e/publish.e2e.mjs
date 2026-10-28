@@ -105,7 +105,9 @@ esac
     const tip = sh(bare, ['rev-parse', 'sideshot']);
     const listed = `${sh(bare, ['ls-tree', tip])}\n100644 blob ${blob}\t7\n`;
     const tree = execFileSync(realGit, ['mktree'], { cwd: bare, input: listed, encoding: 'utf8' }).trim();
-    const commit = sh(bare, ['commit-tree', tree, '-p', tip, '-m', 'A file named like a pull request']);
+    // The bare repository has no one to commit as, and a CI runner may have no one either: say who.
+    const as = ['-c', 'user.name=SideShot test', '-c', 'user.email=test@example.com'];
+    const commit = sh(bare, [...as, 'commit-tree', tree, '-p', tip, '-m', 'A file named like a pull request']);
     sh(bare, ['update-ref', 'refs/heads/sideshot', commit]);
   };
 
