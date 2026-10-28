@@ -58,9 +58,12 @@ import {
   optionsOf,
   pictureName,
   plainOf,
+  prFoldersOf,
+  pruneOptionsOf,
   slugOf,
   swatches,
   tableOf,
+  toPrune,
 } from './lib.mjs';
 
 const git = (args, cwd) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
@@ -73,35 +76,82 @@ try {
   process.exit(1);
 }
 
+/** The GitHub repository the pictures go to, or a UsageError saying why they cannot: origin is not on GitHub, or
+ * git does not take the branch name. */
+function publishingTo(branch) {
+  let remote = '';
+  try {
+    remote = git(['remote', 'get-url', 'origin'], root);
+  } catch {
+    // Said below.
+  }
+  const slug = slugOf(remote);
+  if (slug === null) throw new UsageError('SideShot publishes only to an origin on GitHub, where the pictures are kept.');
+  try {
+    git(['check-ref-format', '--branch', branch], root);
+  } catch {
+    throw new UsageError(`git does not take ${branch} as a branch name; give --branch another.`);
+  }
+  return slug;
+}
+
+/** Takes off the branch the pictures of pull requests closed long enough ago. The branch is written again as one
+ * commit of what is left, so those pictures leave its history too and the repository gets smaller; the push is
+ * refused if anyone pushed to the branch since it was read. The pull requests are looked up in repo, the one
+ * origin is, never in whatever repository gh would pick by itself. */
+function prune({ branch, olderThan }, repo) {
+  if (git(['ls-remote', 'origin', `refs/heads/${branch}`], root) === '') {
+    console.info(`Nothing to prune: there is no ${branch} branch.`);
+    return;
+  }
+  git(['fetch', '-q', 'origin', `refs/heads/${branch}`], root);
+  const tip = git(['rev-parse', 'FETCH_HEAD'], root);
+  const entries = git(['ls-tree', '-z', tip], root).split('\0').filter(Boolean);
+  const nameOf = (entry) => entry.slice(entry.indexOf('\t') + 1);
+  const prs = JSON.parse(
+    execFileSync('gh', ['pr', 'list', '--state', 'all', '--limit', '1000', '--json', 'number,state,closedAt', '--repo', repo], {
+      cwd: root,
+      encoding: 'utf8',
+    }),
+  );
+  const gone = toPrune(prFoldersOf(entries), prs, Date.now(), olderThan);
+  if (gone.length === 0) {
+    console.info(`Nothing to prune: no pull request with pictures on ${branch} closed ${String(olderThan)} days ago or more.`);
+    return;
+  }
+  // Only a folder of that name goes; a file named like one stays.
+  const kept = entries.filter((entry) => !(entry.split(' ')[1] === 'tree' && gone.includes(nameOf(entry))));
+  const tree = execFileSync('git', ['mktree', '-z'], { cwd: root, input: kept.map((e) => `${e}\0`).join(''), encoding: 'utf8' }).trim();
+  const said = `#${gone.join(', #')}`;
+  const commit = git(['commit-tree', tree, '-m', `chore: prune the pictures of ${said}`], root);
+  git(['push', '-q', `--force-with-lease=refs/heads/${branch}:${tip}`, 'origin', `${commit}:refs/heads/${branch}`], root);
+  console.info(`Took the pictures of ${said} off ${branch}. Those pull requests no longer show them.`);
+}
+
 // What was asked, checked before anything opens: a mistake is said plainly, and nothing is half done.
 let options;
+let pruning = null;
 let slug = null;
 try {
   const configFile = join(root, '.sideshot.json');
-  options = optionsOf(
-    process.argv.slice(2),
-    existsSync(configFile) ? configOf(readFileSync(configFile, 'utf8')) : {},
-  );
-  if (options.publish) {
-    let remote = '';
-    try {
-      remote = git(['remote', 'get-url', 'origin'], root);
-    } catch {
-      // Said below.
-    }
-    slug = slugOf(remote);
-    if (slug === null)
-      throw new UsageError('--publish and --update-pr need an origin on GitHub, where the pictures are kept.');
-    try {
-      git(['check-ref-format', '--branch', options.branch], root);
-    } catch {
-      throw new UsageError(`git does not take ${options.branch} as a branch name; give --branch another.`);
-    }
+  const config = existsSync(configFile) ? configOf(readFileSync(configFile, 'utf8')) : {};
+  const args = process.argv.slice(2);
+  if (args.includes('--prune')) {
+    pruning = pruneOptionsOf(args, config);
+    slug = publishingTo(pruning.branch);
+  } else {
+    options = optionsOf(args, config);
+    if (options.publish) slug = publishingTo(options.branch);
   }
 } catch (error) {
   if (!(error instanceof UsageError)) throw error;
   console.error(error.message);
   process.exit(1);
+}
+// Pruning needs no browser.
+if (pruning) {
+  prune(pruning, slug);
+  process.exit(0);
 }
 const {
   pr, page, before, after, wait, click, branch, setupPath, chosen, schemes, parts, notes, accent,
@@ -327,13 +377,13 @@ console.info(`\n${table}\n`);
 
 if (updatePr) {
   // The table goes between markers in the description, so running again replaces it instead of adding one.
-  const body = execFileSync('gh', ['pr', 'view', pr, '--json', 'body', '--jq', '.body'], {
+  const body = execFileSync('gh', ['pr', 'view', pr, '--json', 'body', '--jq', '.body', '--repo', slug], {
     cwd: root,
     encoding: 'utf8',
   });
   const next = bodyWith(body, table);
   const file = join(out, 'body.md');
   writeFileSync(file, next);
-  execFileSync('gh', ['pr', 'edit', pr, '--body-file', file], { cwd: root, stdio: 'inherit' });
+  execFileSync('gh', ['pr', 'edit', pr, '--body-file', file, '--repo', slug], { cwd: root, stdio: 'inherit' });
   console.info(`Updated the description of #${pr}.`);
 }

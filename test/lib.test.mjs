@@ -13,6 +13,9 @@ import {
   optionsOf,
   pictureName,
   plainOf,
+  prFoldersOf,
+  pruneOptionsOf,
+  toPrune,
   slugOf,
   swatches,
   tableOf,
@@ -197,6 +200,11 @@ describe('optionsOf', () => {
       { n: 2, selector: '.b', text: '' },
     ]);
   });
+  it('refuses a flag given without its value, rather than falling back to the default', () => {
+    refused([...base, '--branch'], /--branch needs a value/);
+    refused([...base, '--wait'], /--wait needs a value/);
+    refused([...base, '--part'], /--part needs a value/);
+  });
   it('reads the switches', () => {
     const o = asked('--mark-changes', '--no-watermark', '--update-pr');
     assert.equal(o.markChanges, true);
@@ -287,5 +295,55 @@ describe('bodyWith', () => {
   it('replaces a table whose start marker was taken out, after the end of an earlier one', () => {
     const body = `old, by hand\n${end}\n\n${start}\nT1\n${end}\n`;
     assert.equal(bodyWith(body, 'T2'), `old, by hand\n${end}\n\n${start}\nT2\n${end}\n`);
+  });
+});
+
+describe('pruneOptionsOf', () => {
+  it('prunes after 30 days on the sideshot branch, unless told otherwise', () => {
+    assert.deepEqual(pruneOptionsOf(['--prune']), { branch: 'sideshot', olderThan: 30 });
+    assert.deepEqual(pruneOptionsOf(['--prune', '--older-than', '0'], { branch: 'shots' }), { branch: 'shots', olderThan: 0 });
+    assert.equal(pruneOptionsOf(['--prune'], { olderThan: 7 }).olderThan, 7);
+  });
+  it('refuses a number of days or a branch it cannot use', () => {
+    for (const days of ['soon', '-1', '', '1.5'])
+      usage(() => pruneOptionsOf(['--prune', '--older-than', days]), /--older-than is a number of days/);
+    usage(() => pruneOptionsOf(['--prune', '--branch', '--upload-pack=x']), /Cannot use --branch/);
+  });
+  it('refuses a flag given without its value, rather than falling back to the default', () => {
+    usage(() => pruneOptionsOf(['--prune', '--branch']), /--branch needs a value/);
+    usage(() => pruneOptionsOf(['--prune', '--older-than']), /--older-than needs a value/);
+  });
+});
+
+describe('toPrune', () => {
+  const now = Date.parse('2026-10-28T12:00:00Z');
+  const daysAgo = (d) => new Date(now - d * 86_400_000).toISOString();
+  const prs = [
+    { number: 1, state: 'MERGED', closedAt: daysAgo(40) },
+    { number: 2, state: 'CLOSED', closedAt: daysAgo(31) },
+    { number: 3, state: 'MERGED', closedAt: daysAgo(5) },
+    { number: 4, state: 'OPEN', closedAt: null },
+  ];
+
+  it('takes the folders of pull requests closed or merged long enough ago', () => {
+    assert.deepEqual(toPrune(['1', '2', '3', '4'], prs, now, 30), ['1', '2']);
+    assert.deepEqual(toPrune(['1', '2', '3', '4'], prs, now, 0), ['1', '2', '3']);
+  });
+  it("keeps what is open, what it knows nothing of, and what is not a pull request's folder", () => {
+    assert.deepEqual(toPrune(['4', '99', 'README.md', 'x1'], prs, now, 0), []);
+  });
+});
+
+describe('prFoldersOf', () => {
+  it('names the folders git lists that are named for a pull request, and no file', () => {
+    const entries = [
+      '040000 tree aaaa\t5',
+      '100644 blob bbbb\t6',
+      '120000 blob cccc\t7',
+      '040000 tree dddd\tnotes',
+      '100644 blob eeee\tREADME.md',
+      '040000 tree ffff\t12',
+    ];
+    assert.deepEqual(prFoldersOf(entries), ['5', '12']);
   });
 });

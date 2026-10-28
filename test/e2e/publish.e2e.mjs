@@ -19,7 +19,7 @@ const executable = (file, text) => {
 const markers = (body) => body.split('<!-- sideshot:start -->').length - 1;
 
 describe('publishing', () => {
-  let was, now, place, bare, project, body, calls, env;
+  let was, now, place, bare, project, body, calls, prs, env;
   before(async () => {
     was = await serve(pageOf(''));
     now = await serve(pageOf(badge));
@@ -29,6 +29,7 @@ describe('publishing', () => {
     const bin = join(place, 'bin');
     body = join(place, 'body.md');
     calls = join(place, 'gh-calls.txt');
+    prs = join(place, 'prs.json');
     for (const dir of [bare, project, bin]) mkdirSync(dir);
 
     sh(bare, ['init', '-q', '--bare', '-b', 'main']);
@@ -54,7 +55,8 @@ fi
 exec "${realGit}" "$@"
 `,
     );
-    // gh pr view N --json body --jq .body, and gh pr edit N --body-file FILE: the only two SideShot calls.
+    // gh pr view N --json body --jq .body and gh pr edit N --body-file FILE to publish, gh pr list to prune: the
+    // only calls SideShot makes.
     executable(
       join(bin, 'gh'),
       `#!/bin/sh
@@ -62,6 +64,7 @@ echo "$*" >> "${calls}"
 case "$1 $2" in
   "pr view") cat "${body}" ;;
   "pr edit") cp "$5" "${body}" ;;
+  "pr list") cat "${prs}" ;;
   *) echo "gh stand-in cannot $*" >&2; exit 1 ;;
 esac
 `,
@@ -75,13 +78,38 @@ esac
     rmSync(place, { recursive: true, force: true });
   });
 
-  /** SideShot run in the project for pull request 5, with the stand-ins first on PATH unless asked otherwise. */
-  const publish = (more, using = env) =>
-    run(['--pr', '5', '--before', addressOf(was), '--after', addressOf(now), '--devices', 'desk', '--wait', '0', ...more], {
+  /** SideShot run in the project for a pull request (5 unless said), with the stand-ins first on PATH unless asked
+   * otherwise. */
+  const publish = (more, { pr = '5', using = env } = {}) =>
+    run(['--pr', pr, '--before', addressOf(was), '--after', addressOf(now), '--devices', 'desk', '--wait', '0', ...more], {
       cwd: project,
       env: using,
     });
+  const prune = (more = [], using = env) => run(['--prune', ...more], { cwd: project, env: using });
   const onBranch = () => sh(bare, ['ls-tree', '-r', '--name-only', 'sideshot']).split('\n');
+  /** The pull requests gh lists: 5 and 7 closed that many days ago, 6 still open. */
+  const closedDaysAgo = (days) => {
+    const closedAt = new Date(Date.now() - days * 86_400_000).toISOString();
+    writeFileSync(
+      prs,
+      JSON.stringify([
+        { number: 5, state: 'MERGED', closedAt },
+        { number: 6, state: 'OPEN', closedAt: null },
+        { number: 7, state: 'CLOSED', closedAt },
+      ]),
+    );
+  };
+  /** Puts a file, not a folder, named 7 on the sideshot branch, as one more commit on it. */
+  const fileNamedSeven = () => {
+    const blob = execFileSync(realGit, ['hash-object', '-w', '--stdin'], { cwd: bare, input: 'not a folder\n', encoding: 'utf8' }).trim();
+    const tip = sh(bare, ['rev-parse', 'sideshot']);
+    const listed = `${sh(bare, ['ls-tree', tip])}\n100644 blob ${blob}\t7\n`;
+    const tree = execFileSync(realGit, ['mktree'], { cwd: bare, input: listed, encoding: 'utf8' }).trim();
+    // The bare repository has no one to commit as, and a CI runner may have no one either: say who.
+    const as = ['-c', 'user.name=SideShot test', '-c', 'user.email=test@example.com'];
+    const commit = sh(bare, [...as, 'commit-tree', tree, '-p', tip, '-m', 'A file named like a pull request']);
+    sh(bare, ['update-ref', 'refs/heads/sideshot', commit]);
+  };
 
   it('pushes the pictures to the sideshot branch and puts the table in the description', async () => {
     const result = await publish(['--part', 'card=.card', '--update-pr']);
@@ -92,7 +120,11 @@ esac
     assert.match(text, /^Fixes the pricing card\.\n\n<!-- sideshot:start -->/);
     const link = 'https://raw.githubusercontent.com/test-owner/test-repo/sideshot/5/card-desk-after.png';
     assert.ok(text.includes(`<img src="${link}"`), text);
-    assert.match(readFileSync(calls, 'utf8'), /^pr view 5 --json body --jq \.body\npr edit 5 --body-file .*body\.md\n$/);
+    // Asked of the repository origin is, never of one gh would pick by itself.
+    assert.match(
+      readFileSync(calls, 'utf8'),
+      /^pr view 5 --json body --jq \.body --repo test-owner\/test-repo\npr edit 5 --body-file .*body\.md --repo test-owner\/test-repo\n$/,
+    );
     // The checkout it used to commit is gone again.
     assert.equal(sh(project, ['worktree', 'list']).split('\n').length, 1);
   });
@@ -114,9 +146,41 @@ esac
     assert.deepEqual(onBranch(), ['5/plan-desk-after.png', '5/plan-desk-before.png', 'README.md']);
   });
 
-  it('publishes nowhere but GitHub, and says so before opening anything', async () => {
-    const result = await publish(['--part', 'card=.card', '--publish'], process.env);
-    assert.equal(result.status, 1);
-    assert.match(result.stderr, /need an origin on GitHub/);
+  it('keeps the pictures of a pull request closed more recently than --older-than', async () => {
+    const opened = await publish(['--part', 'card=.card', '--publish'], { pr: '6' });
+    assert.equal(opened.status, 0, opened.stderr);
+    closedDaysAgo(2);
+    const before = sh(bare, ['rev-parse', 'sideshot']);
+    const result = await prune();
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Nothing to prune/);
+    assert.equal(sh(bare, ['rev-parse', 'sideshot']), before);
+  });
+
+  it('prunes the pictures of a pull request closed long ago, leaving the branch one commit of what is left', async () => {
+    closedDaysAgo(40);
+    fileNamedSeven();
+    assert.ok(Number(sh(bare, ['rev-list', '--count', 'sideshot'])) > 1);
+    const result = await prune();
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Took the pictures of #5 off sideshot/);
+    // PR 7 closed long ago too, but its name is a file's here, not a folder of pictures: it stays.
+    assert.deepEqual(onBranch(), ['6/card-desk-after.png', '6/card-desk-before.png', '7', 'README.md']);
+    assert.match(readFileSync(calls, 'utf8'), /^pr list --state all --limit 1000 --json number,state,closedAt --repo test-owner\/test-repo$/m);
+    assert.equal(sh(bare, ['rev-list', '--count', 'sideshot']), '1');
+  });
+
+  it('has nothing left to prune once those pictures are gone, and keeps an open pull request even at --older-than 0', async () => {
+    closedDaysAgo(0);
+    const result = await prune(['--older-than', '0']);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Nothing to prune/);
+  });
+
+  it('publishes and prunes nowhere but GitHub, and says so before opening anything', async () => {
+    for (const result of [await publish(['--part', 'card=.card', '--publish'], { using: process.env }), await prune([], process.env)]) {
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /only to an origin on GitHub/);
+    }
   });
 });

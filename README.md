@@ -22,7 +22,7 @@ marks what changed, shows you first, then puts the side-by-side table in the pul
 
 <p align="center">
   <a href="https://skills.sh"><img src="https://img.shields.io/badge/Agent_Skill-Claude_Code_%C2%B7_Codex_%C2%B7_Cursor_%C2%B7_OpenCode-000000?style=flat-square" alt="An Agent Skill, for Claude Code, Codex, Cursor and OpenCode" /></a>
-  <img src="https://img.shields.io/badge/version-0.4.0-000000?style=flat-square" alt="Version 0.4.0" />
+  <img src="https://img.shields.io/badge/version-0.5.0-000000?style=flat-square" alt="Version 0.5.0" />
   <a href="https://github.com/victorsaly/sideshot/actions/workflows/check.yml"><img src="https://img.shields.io/github/actions/workflow/status/victorsaly/sideshot/check.yml?branch=main&style=flat-square&label=check&color=000000" alt="Checks on main" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-000000?style=flat-square" alt="MIT licence" /></a>
 </p>
@@ -147,6 +147,7 @@ node skills/sideshot/scripts/sideshot.mjs --pr 123 --page /pricing --part plans=
 | `--setup ./file.mjs` | Runs on each page before it opens: stand-in data, a cookie, a login. |
 | `--publish` | Pushes the pictures to the `sideshot` branch and prints the table. |
 | `--update-pr` | Also writes the table into the PR description (needs the GitHub CLI). |
+| `--prune [--older-than 30]` | Takes off the `sideshot` branch the pictures of pull requests closed or merged at least that many days ago (30 unless said), so the repository does not grow for ever. The branch becomes one commit of what is left, and those pull requests no longer show their pictures. |
 
 A `--setup` file, for a page whose data only production can reach:
 
