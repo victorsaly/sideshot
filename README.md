@@ -12,7 +12,10 @@
 touches, pictures them before and after on a desk and a phone (and in dark mode, if colours changed), rings and
 marks what changed, shows you first, then puts the side-by-side table in the pull request. Reviewers see the change instead of imagining it.</p>
 
+<p align="center"><a href="https://skills.victorsaly.com/sideshot#film"><img src="docs/assets/film.jpg" alt="Watch SideShot in 36 seconds: a film of a pricing change pictured before and after, marked, and put in a pull request" width="720" /></a></p>
+
 <p align="center">
+  <a href="https://skills.victorsaly.com/sideshot#film"><strong>Watch the film</strong></a> &nbsp;·&nbsp;
   <a href="https://skills.victorsaly.com/sideshot"><strong>See it at work</strong></a> &nbsp;·&nbsp;
   <a href="#start"><strong>Get started</strong></a> &nbsp;·&nbsp;
   <a href="#what-you-get"><strong>What you get</strong></a> &nbsp;·&nbsp;
@@ -22,7 +25,7 @@ marks what changed, shows you first, then puts the side-by-side table in the pul
 
 <p align="center">
   <a href="https://skills.sh"><img src="https://img.shields.io/badge/Agent_Skill-Claude_Code_%C2%B7_Codex_%C2%B7_Cursor_%C2%B7_OpenCode-000000?style=flat-square" alt="An Agent Skill, for Claude Code, Codex, Cursor and OpenCode" /></a>
-  <img src="https://img.shields.io/badge/version-0.5.0-000000?style=flat-square" alt="Version 0.5.0" />
+  <img src="https://img.shields.io/badge/version-0.5.1-000000?style=flat-square" alt="Version 0.5.1" />
   <a href="https://github.com/victorsaly/sideshot/actions/workflows/check.yml"><img src="https://img.shields.io/github/actions/workflow/status/victorsaly/sideshot/check.yml?branch=main&style=flat-square&label=check&color=000000" alt="Checks on main" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-000000?style=flat-square" alt="MIT licence" /></a>
 </p>
