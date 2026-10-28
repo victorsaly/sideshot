@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.5.0 (2026-10-28)
+
+### Quicker
+
+- Pictures are taken four at a time (`--jobs`), each page waits `--wait` once instead of up to three times, and
+  a part's height is checked for 0.6 seconds, not 2. Eight pictures of a small page: 47 seconds before, 7 now.
+- Pictures are marked and the overview sheets drawn side by side too.
+
+### Fewer words for an agent to read
+
+- `--help` says every option, so the script need not be read to run it.
+- The skill says the steps; what only some pages need is in `reference.md`, read when needed.
+- An overview sheet for each part (`<part>-overview.png`), every pair before beside after: one image to look at
+  instead of each picture. It is never published.
+- The run says what it did in a few lines: how many pictures, which have nothing marked, what was not there.
+  With `--update-pr` the table goes in the description and `table.md`, and is not printed again.
+
+### Easier in any project
+
+- `--pr` can be left out: the GitHub CLI finds the branch's pull request.
+- Playwright installed globally works, for a project without Node of its own.
+- A server that does not answer, or a Chromium not installed, is said in a line before any picture is taken.
+- `--reuse` publishes the pictures already taken, the ones that were looked at, without taking them again.
+
+### Only what changed
+
+- A pair that is the same before and after, pixel for pixel, is not kept, shown or published; the table names
+  it in a line, so the reviewer knows it was looked at.
+- With nothing left to compare, the run stops before drawing anything (exit 3) and says why: pairs that were the
+  same, parts on neither side. With `--update-pr` the description says so, and why, in place of a table, and no
+  pictures are pushed.
+
+### Fixed
+
+- A note is ringed only on the part it is in, not on every part's picture.
+- Every GitHub CLI call names origin's repository (`--repo`), so `GH_REPO` or gh's own default can never point
+  it at a pull request of the same number elsewhere.
+- An address with a login is reached, and a login or token in an address is never printed.
+- A second run for another page no longer draws again on the first page's pictures (a second tag, marks around
+  the marks): only the pictures a run takes are finished.
+- A `--click` on something only one side has (a new button) no longer stops the run after 30 seconds: that
+  side is pictured as it is, and the run says so.
+
 ## 0.4.1 (2026-10-28)
 
 - `--prune [--older-than 30]` takes off the `sideshot` branch the pictures of pull requests closed or merged at

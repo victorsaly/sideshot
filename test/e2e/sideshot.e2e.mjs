@@ -41,15 +41,103 @@ describe('sideshot.mjs', { concurrency: true }, () => {
       // Drawn on, so the plain picture is kept beside it.
       assert.ok(files.includes(`card-${device}-after-plain.png`), files.join(', '));
     }
-    assert.match(result.stdout, /Marked \d+ changed area\(s\) on card-desk-after\.png/);
-    assert.match(result.stdout, /Took the pictures into/);
+    assert.match(result.stdout, /Marked \d+ changed area\(s\) on 4 of 4 after pictures\./);
+    assert.match(result.stdout, /Took 8 pictures into .* in \d+\.\ds\./);
+    // One sheet to look them over, never taken for a picture of its own.
+    assert.match(result.stdout, /Look them over in: card-overview\.png/);
+    assert.ok(isPng(join(folder, 'card-overview.png')));
+    assert.ok(!files.some((f) => f.startsWith('card-overview') && f !== 'card-overview.png'), files.join(', '));
+  });
+
+  it('rings a note only on the part it is in', async () => {
+    const result = await shoot(
+      '10', '--part', 'card=.card', '--part', 'badge=.new', '--devices', 'desk', '--wait', '0',
+      '--note', 'h2=The plan', '--no-watermark',
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const files = readdirSync(join(out, '10'));
+    // Drawn on, the card keeps a plain copy; the badge, which the noted title is not in, is left as it was taken.
+    assert.ok(files.includes('card-desk-after-plain.png'), files.join(', '));
+    assert.ok(files.includes('badge-desk-after.png'), files.join(', '));
+    assert.ok(!files.includes('badge-desk-after-plain.png'), files.join(', '));
+  });
+
+  it('keeps no pair that is the same before and after, and says which', async () => {
+    const result = await shoot('13', '--part', 'card=.card', '--part', 'title=h2', '--devices', 'desk,phone', '--wait', '0');
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /The same before and after, so not kept: title on desk, title on phone\./);
+    const files = readdirSync(join(out, '13'));
+    assert.ok(!files.some((f) => f.startsWith('title-')), files.join(', '));
+    assert.ok(files.includes('card-phone-after.png'), files.join(', '));
+  });
+
+  it('stops when there is nothing to compare, and says why', async () => {
+    const result = await run(['--pr', '14', '--before', addressOf(was), '--after', addressOf(was), '--out', out,
+      '--part', 'card=.card', '--part', 'badge=.new', '--devices', 'desk', '--wait', '0', '--mark-changes']);
+    assert.equal(result.status, 3, result.stderr);
+    assert.match(
+      result.stdout,
+      /nothing to compare on \/: before and after are the same, pixel for pixel, on card on desk; the part is on neither side on badge on desk\. Check that --after runs this branch/,
+    );
+    // Nothing kept, nothing drawn, no overview.
+    assert.deepEqual(readdirSync(join(out, '14')), ['run.json']);
+  });
+
+  it('pictures the side where what is pressed is not there, and says so', async () => {
+    const result = await shoot(
+      '11', '--part', 'card=.card', '--devices', 'desk', '--wait', '0', '--click', '.new', '--no-watermark',
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Could not press \.new for: card before on desk/);
+    assert.deepEqual(readdirSync(join(out, '11')).filter((f) => f.endsWith('-before.png')), ['card-desk-before.png']);
+  });
+
+  it('says a server that does not answer, before opening a browser', async () => {
+    const result = await run(['--pr', '12', '--before', addressOf(was), '--after', 'http://127.0.0.1:9',
+      '--part', 'card=.card', '--out', out]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Nothing answers at http:\/\/127\.0\.0\.1:9\/ \(--after\)/);
+    assert.ok(!existsSync(join(out, '12')));
+  });
+
+  it('asks a server with a login in its address, and never prints the login', async () => {
+    const login = (address) => address.replace('://', '://me:hunter2@');
+    const reached = await run(['--pr', '15', '--before', login(addressOf(was)), '--after', addressOf(now), '--out', out,
+      '--part', 'badge=.new', '--devices', 'desk', '--wait', '0', '--no-watermark']);
+    assert.equal(reached.status, 0, reached.stderr);
+    const silent = await run(['--pr', '15', '--before', login('http://127.0.0.1:9'), '--after', addressOf(now),
+      '--out', out, '--part', 'card=.card']);
+    assert.equal(silent.status, 1);
+    assert.match(silent.stderr, /Nothing answers at http:\/\/127\.0\.0\.1:9\/ \(--before\)/);
+    assert.doesNotMatch(silent.stderr, /hunter2/);
+  });
+
+  it('waits for a part drawn late, rather than calling it missing', async () => {
+    const late = await serve(pageOf('<script>setTimeout(() => document.querySelector(".card").insertAdjacentHTML(' +
+      '"beforeend", \'<span class="new">New: priority support</span>\'), 600);</script>'));
+    try {
+      const result = await run(['--pr', '16', '--before', addressOf(now), '--after', addressOf(late), '--out', out,
+        '--part', 'badge=.new', '--devices', 'desk', '--wait', '0']);
+      assert.equal(result.status, 3, result.stdout);
+      // Found on both sides, and the same: not "on neither side".
+      assert.match(result.stdout, /the same, pixel for pixel, on badge on desk\./);
+      assert.doesNotMatch(result.stdout, /Not on the page/);
+    } finally {
+      late.close();
+    }
+  });
+
+  it('says every option with --help, anywhere, without a repository', async () => {
+    const result = await run(['--help'], { cwd: tmpdir() });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /--part name=selector/);
   });
 
   it('says which parts are not on the page', async () => {
     const result = await shoot('8', '--part', 'badge=.new', '--devices', 'desk', '--wait', '0', '--no-watermark');
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /Not on the page \(new or removed\): badge before on desk/);
-    assert.deepEqual(readdirSync(join(out, '8')), ['badge-desk-after.png']);
+    assert.deepEqual(readdirSync(join(out, '8')).sort(), ['badge-desk-after.png', 'badge-overview.png', 'run.json']);
   });
 
   it('refuses what it cannot use before opening anything, and writes nothing', async () => {

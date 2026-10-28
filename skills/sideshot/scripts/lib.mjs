@@ -199,13 +199,21 @@ export function optionsOf(args, config = {}) {
   const chosen = devicesOf(all('--devices')[0], config.devices);
 
   const schemeSpecs = list('--schemes', 'schemes', ['light']);
-  // A typo among them is said, not dropped: light,drak would otherwise quietly picture light alone.
-  const schemes = schemeSpecs.filter((s) => s === 'light' || s === 'dark');
-  if (schemes.length === 0 || schemes.length < schemeSpecs.length)
+  // A typo among them is said, not dropped: light,drak would otherwise quietly picture light alone. One given
+  // twice is taken once, or two pictures would be taken into one file.
+  const known = schemeSpecs.filter((s) => s === 'light' || s === 'dark');
+  const schemes = [...new Set(known)];
+  if (schemes.length === 0 || known.length < schemeSpecs.length)
     throw new UsageError(`Cannot read --schemes ${schemeSpecs.join(',')}. Use light, dark, or light,dark.`);
 
   const waitText = one('--wait', 'wait', '1500');
   if (!/^\d+$/.test(waitText)) throw new UsageError(`--wait is in milliseconds, like 1500 (not ${waitText}).`);
+
+  // Pictures taken at once, each in a browser context of its own: more is faster until the machine, or the dev
+  // server, is the one waiting.
+  const jobsText = one('--jobs', 'jobs', '4');
+  if (!/^\d+$/.test(jobsText) || Number(jobsText) < 1 || Number(jobsText) > 16)
+    throw new UsageError(`--jobs is how many pictures are taken at once, 1 to 16 (not ${jobsText}).`);
 
   const branch = one('--branch', 'branch', 'sideshot');
   if (!isBranchName(branch))
@@ -213,12 +221,18 @@ export function optionsOf(args, config = {}) {
 
   const page = one('--page', 'page', '/');
   const updatePr = args.includes('--update-pr');
+  const publish = updatePr || args.includes('--publish');
+  // The pictures already taken, published as they were looked at, rather than taken again.
+  const reuse = args.includes('--reuse');
+  if (reuse && !publish)
+    throw new UsageError('--reuse publishes the pictures already taken: give it with --publish or --update-pr.');
   return {
     pr,
     page: page.startsWith('/') ? page : `/${page}`,
     before: baseOf('--before', before),
     after: baseOf('--after', one('--after', 'after', 'http://localhost:3000')),
     wait: Number(waitText),
+    jobs: Number(jobsText),
     click: one('--click', 'click', ''),
     branch,
     setupPath: one('--setup', 'setup', ''),
@@ -235,8 +249,9 @@ export function optionsOf(args, config = {}) {
     markChanges: args.includes('--mark-changes') || config.markChanges === true,
     // Each pair carries a small SideShot tag in the corner of its "after" picture, unless asked not to.
     watermark: !args.includes('--no-watermark') && config.watermark !== false,
-    publish: updatePr || args.includes('--publish'),
+    publish,
     updatePr,
+    reuse,
   };
 }
 
@@ -288,10 +303,154 @@ export function pictureName(part, device, scheme, when) {
 
 /** The copy of a picture as it was taken, kept beside it when it has been drawn on. */
 export const plainOf = (picture) => picture.replace(/\.png$/, '-plain.png');
-export const isPicture = (file) => file.endsWith('.png') && !file.endsWith('-plain.png');
+/** A picture taken, as named by pictureName: not its plain copy, and not an overview sheet. */
+export const isPicture = (file) => /-(?:before|after)\.png$/.test(file);
 
-/** The before and after table, in Markdown, for the pictures that were taken (files). */
-export function tableOf({ parts, chosen, schemes, notes, files, before, after, page, slug, branch, pr }) {
+/** The rings whose element shows in a picture of this size: a note on another part of the page is not drawn on
+ * this one. */
+export const ringsWithin = (rings, width, height) =>
+  rings.filter((r) => r.x < width && r.y < height && r.x + r.w > 0 && r.y + r.h > 0);
+
+/** fn run over the items, at most jobs at a time; the results in the items' order, whatever order they finish in. */
+export async function pool(items, jobs, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(jobs, items.length) }, worker));
+  return results;
+}
+
+/** The overview sheets: for each part, its pairs before beside after, four to a sheet, so the pictures can be
+ * looked over in one image (or a few) instead of one by one. Only pairs with a picture on either side. */
+export function sheetsOf({ parts, chosen, schemes, files }) {
+  const sheets = [];
+  for (const part of parts) {
+    const rows = [];
+    for (const device of chosen) {
+      for (const scheme of schemes) {
+        const before = pictureName(part.name, device.name, scheme, 'before');
+        const after = pictureName(part.name, device.name, scheme, 'after');
+        if (!files.has(before) && !files.has(after)) continue;
+        rows.push({
+          label: `${part.name}, ${label(device.name, scheme)} (${device.size})`,
+          before: files.has(before) ? before : null,
+          after: files.has(after) ? after : null,
+        });
+      }
+    }
+    for (let k = 0; k < rows.length; k += 4) {
+      const n = k / 4 + 1;
+      sheets.push({ file: `${part.name}-overview${n === 1 ? '' : `-${String(n)}`}.png`, rows: rows.slice(k, k + 4) });
+    }
+  }
+  return sheets;
+}
+
+/** What SideShot takes, as --help says it: enough to run it without reading the script. */
+export const usage = `SideShot: before-and-after pictures of the part of a page a pull request changes.
+
+  node sideshot.mjs --part plans=#plans [--page /pricing] [--before URL] [--after URL] [options]
+
+What to picture
+  --pr N                   the pull request (found with gh, for this branch, when left out)
+  --page /path             the page, opened on both sides (default /)
+  --part name=selector     a part to picture; repeat for more. page=body for the whole page
+  --click selector         something to press first: a tab, a panel, a menu
+  --devices list           desk 1280x900, phone 390x844, tablet, laptop, wide, 1024x768, or your own
+                           name=412x915:mobile (default desk,phone; web and mobile are desk and phone)
+  --schemes list           light, dark, or light,dark (default light)
+
+Where before and after run
+  --before URL             the site as it is: production, a preview, or main run locally
+  --after URL              this branch, running locally (default http://localhost:3000)
+  --setup file.mjs         runs on each page before it opens: stand-in data, a cookie, a login
+
+What is drawn on the pictures
+  --note "selector=words"  a numbered ring on the after picture; the words go under the table. Repeat
+  --mark-changes           box what was added or changed, rule where something was taken out
+  --accent auto            the marking colour: auto, marigold, magenta, cyan, violet, lime, or #hex
+  --no-watermark           no SideShot tag in the corner of the after pictures
+
+Running
+  --wait ms                time a part is given to settle before it is pictured (default 1500)
+  --jobs N                 pictures taken at once (default 4)
+  --out folder             where the pictures go (default .sideshot), in a folder for the PR
+  --publish                push the pictures to the picture branch and print the table
+  --update-pr              also put the table in the PR description (needs gh)
+  --reuse                  with --publish or --update-pr: the pictures already taken, as they are
+  --branch name            the picture branch, which never merges (default sideshot)
+
+Cleaning up
+  --prune                  take off the picture branch the pictures of pull requests closed or merged
+                           a while ago, leaving it one commit of what is left; needs no browser
+  --older-than days        with --prune: how long ago (default 30). Those pull requests no longer show them
+
+A pair the same before and after is not kept. With nothing left to compare, it stops (exit 3), and with
+--update-pr the description says so, and why.
+
+Defaults can live in .sideshot.json at the project's root, under the same names (markChanges, and
+"watermark": false), so later runs need only --part:
+  { "before": "https://example.com", "after": "http://localhost:4321", "devices": ["desk", "phone"] }`;
+
+/** An address as it may be shown, in a description or a log: without what else it can carry, a login before the
+ * host or a token in the query. */
+export const shownOf = (address) => {
+  const where = new URL(address);
+  return `${where.origin}${where.pathname}`;
+};
+
+/** An address without its login, for a request that only asks whether a server answers: fetch refuses an address
+ * with one, and any answer (a 401 too) will do. */
+export const bareOf = (address) => {
+  const where = new URL(address);
+  where.username = '';
+  where.password = '';
+  return where.href;
+};
+
+/** What a run is known by, beside its pictures: its page, parts, devices and schemes. Two runs for one pull request
+ * (two pages) each keep what they found, and --reuse finds the one it repeats. */
+export const runKeyOf = ({ page, parts, chosen, schemes }) =>
+  JSON.stringify([page, parts.map((p) => `${p.name}=${p.selector}`), chosen.map((d) => d.name), schemes]);
+
+/** Where each side came from, shown without a login or a token: the description is read by everyone who can see
+ * the pull request. */
+function sourcesOf(before, after, page) {
+  const named = (base) => {
+    const where = new URL(`${base}${page}`);
+    return ['localhost', '127.0.0.1', '[::1]'].includes(where.hostname) ? 'run locally' : shownOf(where.href);
+  };
+  return `<sub>Before: ${named(before)} · After: ${named(after)} · made with [SideShot](https://github.com/victorsaly/sideshot)</sub>`;
+}
+
+/** Why a run has nothing to compare, in words for the person running it and for the pull request: pairs the
+ * same before and after, pixel for pixel, and parts on neither side. */
+export function nothingOf({ same, gone, page }) {
+  const path = new URL(page, 'http://localhost').pathname;
+  const why = [];
+  if (same.length > 0) why.push(`before and after are the same, pixel for pixel, on ${same.join(', ')}`);
+  if (gone.length > 0) why.push(`the part is on neither side on ${gone.join(', ')}`);
+  return `SideShot found nothing to compare on ${path}: ${why.join('; ')}.`;
+}
+
+/** What goes in the description in place of a table when there was nothing to compare: that, and why. */
+export const nothingTableOf = ({ why, before, after, page }) =>
+  [
+    '## Before and after',
+    '',
+    `${why} The change may not show on this page, or not in the parts pictured, so there are no pictures.`,
+    '',
+    sourcesOf(before, after, page),
+  ].join('\n');
+
+/** The before and after table, in Markdown, for the pictures that were taken (files). Pairs the same before and
+ * after were not kept, and are named under it. */
+export function tableOf({ parts, chosen, schemes, notes, files, before, after, page, slug, branch, pr, same = [] }) {
   const url = (file) => `https://raw.githubusercontent.com/${slug}/${branch}/${pr}/${file}`;
   const lines = ['## Before and after', ''];
   for (const part of parts) {
@@ -311,20 +470,12 @@ export function tableOf({ parts, chosen, schemes, notes, files, before, after, p
       }
     }
   }
+  // A pair left out for showing no change is still said: the reviewer knows it was looked at.
+  if (same.length > 0) lines.push(`<sub>The same before and after, so not shown: ${same.join(', ')}.</sub>`, '');
   // The numbered rings on the "after" pictures, said in words.
   if (notes.length > 0)
     lines.push('**What changed**', '', ...notes.map((note) => `${String(note.n)}. ${note.text}`), '');
-  // Where each side came from, without what else an address can carry: a login before the host, a token in the
-  // query. The description is read by everyone who can see the pull request.
-  const named = (base) => {
-    const where = new URL(`${base}${page}`);
-    return ['localhost', '127.0.0.1', '[::1]'].includes(where.hostname)
-      ? 'run locally'
-      : `${where.origin}${where.pathname}`;
-  };
-  lines.push(
-    `<sub>Before: ${named(before)} · After: ${named(after)} · made with [SideShot](https://github.com/victorsaly/sideshot)</sub>`,
-  );
+  lines.push(sourcesOf(before, after, page));
   return lines.join('\n');
 }
 

@@ -87,7 +87,7 @@ esac
     });
   const prune = (more = [], using = env) => run(['--prune', ...more], { cwd: project, env: using });
   const onBranch = () => sh(bare, ['ls-tree', '-r', '--name-only', 'sideshot']).split('\n');
-  /** The pull requests gh lists: 5 and 7 closed that many days ago, 6 still open. */
+  /** The pull requests gh lists: 5 and 8 closed that many days ago, 6 still open (7 it does not list). */
   const closedDaysAgo = (days) => {
     const closedAt = new Date(Date.now() - days * 86_400_000).toISOString();
     writeFileSync(
@@ -95,15 +95,15 @@ esac
       JSON.stringify([
         { number: 5, state: 'MERGED', closedAt },
         { number: 6, state: 'OPEN', closedAt: null },
-        { number: 7, state: 'CLOSED', closedAt },
+        { number: 8, state: 'CLOSED', closedAt },
       ]),
     );
   };
-  /** Puts a file, not a folder, named 7 on the sideshot branch, as one more commit on it. */
-  const fileNamedSeven = () => {
+  /** Puts a file, not a folder, named 8 on the sideshot branch, as one more commit on it. */
+  const fileNamedEight = () => {
     const blob = execFileSync(realGit, ['hash-object', '-w', '--stdin'], { cwd: bare, input: 'not a folder\n', encoding: 'utf8' }).trim();
     const tip = sh(bare, ['rev-parse', 'sideshot']);
-    const listed = `${sh(bare, ['ls-tree', tip])}\n100644 blob ${blob}\t7\n`;
+    const listed = `${sh(bare, ['ls-tree', tip])}\n100644 blob ${blob}\t8\n`;
     const tree = execFileSync(realGit, ['mktree'], { cwd: bare, input: listed, encoding: 'utf8' }).trim();
     // The bare repository has no one to commit as, and a CI runner may have no one either: say who.
     const as = ['-c', 'user.name=SideShot test', '-c', 'user.email=test@example.com'];
@@ -120,7 +120,7 @@ esac
     assert.match(text, /^Fixes the pricing card\.\n\n<!-- sideshot:start -->/);
     const link = 'https://raw.githubusercontent.com/test-owner/test-repo/sideshot/5/card-desk-after.png';
     assert.ok(text.includes(`<img src="${link}"`), text);
-    // Asked of the repository origin is, never of one gh would pick by itself.
+    // Bound to origin's repository, whatever gh would pick by itself.
     assert.match(
       readFileSync(calls, 'utf8'),
       /^pr view 5 --json body --jq \.body --repo test-owner\/test-repo\npr edit 5 --body-file .*body\.md --repo test-owner\/test-repo\n$/,
@@ -146,6 +146,68 @@ esac
     assert.deepEqual(onBranch(), ['5/plan-desk-after.png', '5/plan-desk-before.png', 'README.md']);
   });
 
+  it('publishes the pictures already taken, as they are, with --reuse', async () => {
+    const taken = sh(project, ['hash-object', join('.sideshot', '5', 'plan-desk-after.png')]);
+    // Nothing answers at either address: had it taken them again, it would have stopped there.
+    const silent = 'http://127.0.0.1:9';
+    const result = await run(
+      ['--pr', '5', '--before', silent, '--after', silent, '--devices', 'desk', '--part', 'plan=.card', '--publish', '--reuse'],
+      { cwd: project, env },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Publishing the 2 pictures already in/);
+    assert.equal(sh(bare, ['rev-parse', 'sideshot:5/plan-desk-after.png']), taken);
+  });
+
+  it('asks for pictures to reuse, and for somewhere to publish them', async () => {
+    const none = await run(['--pr', '6', '--before', 'http://127.0.0.1:9', '--part', 'a=.a', '--publish', '--reuse'], {
+      cwd: project,
+      env,
+    });
+    assert.equal(none.status, 1);
+    assert.match(none.stderr, /no pictures in .* to publish/);
+    const nowhere = await publish(['--part', 'plan=.card', '--reuse']);
+    assert.equal(nowhere.status, 1);
+    assert.match(nowhere.stderr, /--reuse publishes the pictures already taken/);
+  });
+
+  it('says in the description that there was nothing to compare, and why, and pushes nothing', async () => {
+    const pushed = sh(bare, ['rev-parse', 'sideshot']);
+    const same = await run(
+      ['--pr', '7', '--before', addressOf(was), '--after', addressOf(was), '--devices', 'desk', '--wait', '0',
+        '--part', 'card=.card', '--update-pr'],
+      { cwd: project, env },
+    );
+    assert.equal(same.status, 3, same.stderr);
+    assert.match(same.stdout, /Said in the description of #7 that there was nothing to compare, and why\./);
+    const text = readFileSync(body, 'utf8');
+    assert.equal(markers(text), 1);
+    assert.match(text, /<!-- sideshot:start -->\n## Before and after\n\nSideShot found nothing to compare on \/: before and after are the same, pixel for pixel, on card on desk\./);
+    assert.doesNotMatch(text, /<img/);
+    assert.equal(sh(bare, ['rev-parse', 'sideshot']), pushed);
+    // Said again from what the run kept, without taking anything.
+    writeFileSync(body, 'Fixes the pricing card.\n');
+    const silent = 'http://127.0.0.1:9';
+    const again = await run(['--pr', '7', '--before', silent, '--after', silent, '--devices', 'desk', '--part', 'card=.card', '--update-pr', '--reuse'], {
+      cwd: project,
+      env,
+    });
+    assert.equal(again.status, 0, again.stderr);
+    assert.match(readFileSync(body, 'utf8'), /SideShot found nothing to compare/);
+    // What a run for another page found stands for that page alone: --reuse for this one still publishes its pictures.
+    const plan = await run(
+      ['--pr', '7', '--before', addressOf(was), '--after', addressOf(now), '--devices', 'desk', '--wait', '0',
+        '--part', 'plan=.card'],
+      { cwd: project, env },
+    );
+    assert.equal(plan.status, 0, plan.stderr);
+    const reused = await run(['--pr', '7', '--before', silent, '--after', silent, '--devices', 'desk',
+      '--part', 'plan=.card', '--update-pr', '--reuse'], { cwd: project, env });
+    assert.equal(reused.status, 0, reused.stderr);
+    assert.match(reused.stdout, /Publishing the 2 pictures already in/);
+    assert.match(readFileSync(body, 'utf8'), /<img src=".*\/7\/plan-desk-after\.png"/);
+  });
+
   it('keeps the pictures of a pull request closed more recently than --older-than', async () => {
     const opened = await publish(['--part', 'card=.card', '--publish'], { pr: '6' });
     assert.equal(opened.status, 0, opened.stderr);
@@ -159,13 +221,21 @@ esac
 
   it('prunes the pictures of a pull request closed long ago, leaving the branch one commit of what is left', async () => {
     closedDaysAgo(40);
-    fileNamedSeven();
+    fileNamedEight();
     assert.ok(Number(sh(bare, ['rev-list', '--count', 'sideshot'])) > 1);
     const result = await prune();
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /Took the pictures of #5 off sideshot/);
-    // PR 7 closed long ago too, but its name is a file's here, not a folder of pictures: it stays.
-    assert.deepEqual(onBranch(), ['6/card-desk-after.png', '6/card-desk-before.png', '7', 'README.md']);
+    // PR 8 closed long ago too, but its name is a file's here, not a folder of pictures: it stays. PR 7, which gh
+    // does not list, keeps its folder.
+    assert.deepEqual(onBranch(), [
+      '6/card-desk-after.png',
+      '6/card-desk-before.png',
+      '7/plan-desk-after.png',
+      '7/plan-desk-before.png',
+      '8',
+      'README.md',
+    ]);
     assert.match(readFileSync(calls, 'utf8'), /^pr list --state all --limit 1000 --json number,state,closedAt --repo test-owner\/test-repo$/m);
     assert.equal(sh(bare, ['rev-list', '--count', 'sideshot']), '1');
   });
