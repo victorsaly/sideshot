@@ -153,9 +153,23 @@ function accentOf(spec) {
   );
 }
 
+/** Refuses a flag given last, with no value after it: falling back to .sideshot.json or the default instead would
+ * act on what was not asked (prune the default branch when another was meant). */
+function needValues(args, flags) {
+  const bare = args.filter((a, i) => flags.includes(a) && args[i + 1] === undefined);
+  if (bare.length > 0) throw new UsageError(`${bare[0]} needs a value, like ${bare[0]} ${examples[bare[0]]}.`);
+}
+const examples = {
+  '--pr': '123', '--page': '/pricing', '--before': 'https://example.com', '--after': 'http://localhost:3000',
+  '--wait': '1500', '--click': '"button:has-text(\'Open\')"', '--branch': 'sideshot', '--setup': './sideshot-setup.mjs',
+  '--out': '.sideshot', '--part': 'hero=.hero', '--note': '".hero=What changed"', '--devices': 'desk,phone',
+  '--schemes': 'light,dark', '--accent': 'auto', '--older-than': '30',
+};
+
 /** Everything SideShot was asked, from the command line first and .sideshot.json second, checked. Throws a
  * UsageError for anything it cannot use. */
 export function optionsOf(args, config = {}) {
+  needValues(args, Object.keys(examples).filter((f) => f !== '--older-than'));
   /** Every value given for a flag, in order: --part hero=.hero --part list=.list. */
   const all = (flag) =>
     args.flatMap((a, i) => (a === flag && args[i + 1] !== undefined ? [args[i + 1]] : []));
@@ -239,6 +253,42 @@ export function optionsOf(args, config = {}) {
     updatePr,
     reuse,
   };
+}
+
+/** What --prune was asked: the branch the pictures are kept on, and how many days after a pull request closes its
+ * pictures may go. */
+export function pruneOptionsOf(args, config = {}) {
+  needValues(args, ['--branch', '--older-than']);
+  const one = (flag, key, fallback) => {
+    const i = args.indexOf(flag);
+    return String(i !== -1 && args[i + 1] !== undefined ? args[i + 1] : config[key] ?? fallback);
+  };
+  const branch = one('--branch', 'branch', 'sideshot');
+  if (!isBranchName(branch))
+    throw new UsageError(`Cannot use --branch ${branch}. Use a branch name like sideshot or shots/ui.`);
+  const days = one('--older-than', 'olderThan', '30');
+  if (!/^\d+$/.test(days))
+    throw new UsageError(`--older-than is a number of days after a pull request closed, like 30 (not ${days}).`);
+  return { branch, olderThan: Number(days) };
+}
+
+/** The names of the folders, among what git ls-tree lists ("mode type sha<tab>name"), that are named for a pull
+ * request. A file of that name is not one, and is never pruned. */
+export const prFoldersOf = (entries) =>
+  entries
+    .filter((entry) => entry.split(' ')[1] === 'tree')
+    .map((entry) => entry.slice(entry.indexOf('\t') + 1))
+    .filter((name) => /^\d+$/.test(name));
+
+/** The pull requests' folders whose pictures may go: closed or merged at least that many days before now. A folder
+ * of an open pull request, of one not in the list, or not named for one at all, is kept. */
+export function toPrune(folders, prs, now, olderThan) {
+  const closed = new Map(
+    prs.filter((p) => p.state !== 'OPEN' && p.closedAt).map((p) => [String(p.number), Date.parse(p.closedAt)]),
+  );
+  return folders.filter(
+    (f) => /^\d+$/.test(f) && closed.has(f) && now - closed.get(f) >= olderThan * 86_400_000,
+  );
 }
 
 export const label = (device, scheme) => (scheme === 'light' ? device : `${device}-${scheme}`);
@@ -333,7 +383,12 @@ Running
   --publish                push the pictures to the picture branch and print the table
   --update-pr              also put the table in the PR description (needs gh)
   --reuse                  with --publish or --update-pr: the pictures already taken, as they are
-  --branch name           the picture branch, which never merges (default sideshot)
+  --branch name            the picture branch, which never merges (default sideshot)
+
+Cleaning up
+  --prune                  take off the picture branch the pictures of pull requests closed or merged
+                           a while ago, leaving it one commit of what is left; needs no browser
+  --older-than days        with --prune: how long ago (default 30). Those pull requests no longer show them
 
 A pair the same before and after is not kept. With nothing left to compare, it stops (exit 3), and with
 --update-pr the description says so, and why.

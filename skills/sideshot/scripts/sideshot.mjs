@@ -42,6 +42,8 @@ import {
   pictureName,
   plainOf,
   pool,
+  prFoldersOf,
+  pruneOptionsOf,
   ringsWithin,
   runKeyOf,
   sheetsOf,
@@ -49,6 +51,7 @@ import {
   slugOf,
   swatches,
   tableOf,
+  toPrune,
   usage,
 } from './lib.mjs';
 
@@ -69,8 +72,61 @@ try {
   process.exit(1);
 }
 
+/** The GitHub repository the pictures go to, or a UsageError saying why they cannot: origin is not on GitHub, or
+ * git does not take the branch name. */
+function publishingTo(branch) {
+  let remote = '';
+  try {
+    remote = git(['remote', 'get-url', 'origin'], root);
+  } catch {
+    // Said below.
+  }
+  const slug = slugOf(remote);
+  if (slug === null) throw new UsageError('SideShot publishes only to an origin on GitHub, where the pictures are kept.');
+  try {
+    git(['check-ref-format', '--branch', branch], root);
+  } catch {
+    throw new UsageError(`git does not take ${branch} as a branch name; give --branch another.`);
+  }
+  return slug;
+}
+
+/** Takes off the branch the pictures of pull requests closed long enough ago. The branch is written again as one
+ * commit of what is left, so those pictures leave its history too and the repository gets smaller; the push is
+ * refused if anyone pushed to the branch since it was read. The pull requests are looked up in repo, the one
+ * origin is, never in whatever repository gh would pick by itself. */
+function prune({ branch, olderThan }, repo) {
+  if (git(['ls-remote', 'origin', `refs/heads/${branch}`], root) === '') {
+    console.info(`Nothing to prune: there is no ${branch} branch.`);
+    return;
+  }
+  git(['fetch', '-q', 'origin', `refs/heads/${branch}`], root);
+  const tip = git(['rev-parse', 'FETCH_HEAD'], root);
+  const entries = git(['ls-tree', '-z', tip], root).split('\0').filter(Boolean);
+  const nameOf = (entry) => entry.slice(entry.indexOf('\t') + 1);
+  const prs = JSON.parse(
+    execFileSync('gh', ['pr', 'list', '--state', 'all', '--limit', '1000', '--json', 'number,state,closedAt', '--repo', repo], {
+      cwd: root,
+      encoding: 'utf8',
+    }),
+  );
+  const gone = toPrune(prFoldersOf(entries), prs, Date.now(), olderThan);
+  if (gone.length === 0) {
+    console.info(`Nothing to prune: no pull request with pictures on ${branch} closed ${String(olderThan)} days ago or more.`);
+    return;
+  }
+  // Only a folder of that name goes; a file named like one stays.
+  const kept = entries.filter((entry) => !(entry.split(' ')[1] === 'tree' && gone.includes(nameOf(entry))));
+  const tree = execFileSync('git', ['mktree', '-z'], { cwd: root, input: kept.map((e) => `${e}\0`).join(''), encoding: 'utf8' }).trim();
+  const said = `#${gone.join(', #')}`;
+  const commit = git(['commit-tree', tree, '-m', `chore: prune the pictures of ${said}`], root);
+  git(['push', '-q', `--force-with-lease=refs/heads/${branch}:${tip}`, 'origin', `${commit}:refs/heads/${branch}`], root);
+  console.info(`Took the pictures of ${said} off ${branch}. Those pull requests no longer show them.`);
+}
+
 // What was asked, checked before anything opens: a mistake is said plainly, and nothing is half done.
 let options;
+let pruning = null;
 // The GitHub repository is origin's, and every gh call names it: gh alone may pick another (GH_REPO, its default),
 // and a pull request there of the same number would be the one read and written.
 let slug = null;
@@ -82,37 +138,39 @@ try {
 try {
   const configFile = join(root, '.sideshot.json');
   const config = existsSync(configFile) ? configOf(readFileSync(configFile, 'utf8')) : {};
-  // The pull request, when it is not given, is the one gh finds for this branch: one step fewer every run.
-  if (!args.includes('--pr') && config.pr === undefined && slug !== null) {
-    try {
-      const head = git(['rev-parse', '--abbrev-ref', 'HEAD'], root);
-      const found = execFileSync(
-        'gh',
-        ['pr', 'list', '--repo', slug, '--head', head, '--state', 'open', '--json', 'number', '--jq', '.[0].number'],
-        { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
-      ).trim();
-      if (/^\d+$/.test(found)) {
-        args.push('--pr', found);
-        console.info(`For #${found}, this branch's pull request.`);
+  if (args.includes('--prune')) {
+    pruning = pruneOptionsOf(args, config);
+    slug = publishingTo(pruning.branch);
+  } else {
+    // The pull request, when it is not given, is the one gh finds for this branch: one step fewer every run.
+    if (!args.includes('--pr') && config.pr === undefined && slug !== null) {
+      try {
+        const head = git(['rev-parse', '--abbrev-ref', 'HEAD'], root);
+        const found = execFileSync(
+          'gh',
+          ['pr', 'list', '--repo', slug, '--head', head, '--state', 'open', '--json', 'number', '--jq', '.[0].number'],
+          { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+        ).trim();
+        if (/^\d+$/.test(found)) {
+          args.push('--pr', found);
+          console.info(`For #${found}, this branch's pull request.`);
+        }
+      } catch {
+        // No gh, or no pull request yet: optionsOf asks for one.
       }
-    } catch {
-      // No gh, or no pull request yet: optionsOf asks for one.
     }
-  }
-  options = optionsOf(args, config);
-  if (options.publish) {
-    if (slug === null)
-      throw new UsageError('--publish and --update-pr need an origin on GitHub, where the pictures are kept.');
-    try {
-      git(['check-ref-format', '--branch', options.branch], root);
-    } catch {
-      throw new UsageError(`git does not take ${options.branch} as a branch name; give --branch another.`);
-    }
+    options = optionsOf(args, config);
+    if (options.publish) slug = publishingTo(options.branch);
   }
 } catch (error) {
   if (!(error instanceof UsageError)) throw error;
   console.error(error.message);
   process.exit(1);
+}
+// Pruning needs no browser.
+if (pruning) {
+  prune(pruning, slug);
+  process.exit(0);
 }
 const {
   pr, page, before, after, wait, jobs, click, branch, setupPath, chosen, schemes, parts, notes, accent,

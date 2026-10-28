@@ -57,6 +57,21 @@ When the pictures show the change, publish those same pictures: the same command
 pushes them to the `sideshot` branch and puts the table in the PR description, replacing an earlier one. This
 writes to the repository: do it only for the user's own PR, and tell them, with the link.
 
+## 4. Clean up old pictures
+
+Every pull request adds a folder of pictures to the `sideshot` branch, and nothing takes them off by itself. When
+the user asks to clean up, or the branch has grown large, prune it:
+
+```bash
+node <this skill's folder>/scripts/sideshot.mjs --prune [--older-than 30]
+```
+
+It takes off the folders of pull requests closed or merged at least that many days ago (30 unless said), and keeps
+those of open ones. The branch is written again as one commit of what is left, so the repository really gets
+smaller. **The pruned pull requests no longer show their pictures**, so say that to the user first, and ask before
+using a small `--older-than`. The push is refused if anyone pushed to the branch since SideShot read it; run it
+again then.
+
 ## Things to know
 
 - **Playwright** comes from the project, or from a global install for a project without Node. If there is none,
