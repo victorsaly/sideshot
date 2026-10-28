@@ -13,6 +13,7 @@ touches, pictures them before and after on a desk and a phone (and in dark mode,
 marks what changed, shows you first, then puts the side-by-side table in the pull request. Reviewers see the change instead of imagining it.</p>
 
 <p align="center">
+  <a href="https://skills.victorsaly.com/sideshot"><strong>See it at work</strong></a> &nbsp;·&nbsp;
   <a href="#start"><strong>Get started</strong></a> &nbsp;·&nbsp;
   <a href="#what-you-get"><strong>What you get</strong></a> &nbsp;·&nbsp;
   <a href="#how-it-works"><strong>How it works</strong></a> &nbsp;·&nbsp;
