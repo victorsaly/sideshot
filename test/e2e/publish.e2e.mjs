@@ -90,7 +90,8 @@ esac
     const text = readFileSync(body, 'utf8');
     assert.equal(markers(text), 1);
     assert.match(text, /^Fixes the pricing card\.\n\n<!-- sideshot:start -->/);
-    assert.match(text, /https:\/\/raw\.githubusercontent\.com\/test-owner\/test-repo\/sideshot\/5\/card-desk-after\.png/);
+    const link = 'https://raw.githubusercontent.com/test-owner/test-repo/sideshot/5/card-desk-after.png';
+    assert.ok(text.includes(`<img src="${link}"`), text);
     assert.match(readFileSync(calls, 'utf8'), /^pr view 5 --json body --jq \.body\npr edit 5 --body-file .*body\.md\n$/);
     // The checkout it used to commit is gone again.
     assert.equal(sh(project, ['worktree', 'list']).split('\n').length, 1);

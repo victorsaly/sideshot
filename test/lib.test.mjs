@@ -233,7 +233,7 @@ describe('tableOf', () => {
   it('has a row for each picture taken, linked on the branch', () => {
     const t = table(['hero-desk-before.png', 'hero-desk-after.png']);
     assert.match(t, /\*\*hero, desk\*\* <sub>1280×900<\/sub>/);
-    assert.match(t, /<img src="https:\/\/raw\.githubusercontent\.com\/o\/r\/sideshot\/12\/hero-desk-after\.png"/);
+    assert.ok(t.includes('<img src="https://raw.githubusercontent.com/o/r/sideshot/12/hero-desk-after.png"'), t);
     assert.doesNotMatch(t, /phone/);
   });
   it('says when one side is not there', () => {
@@ -242,7 +242,7 @@ describe('tableOf', () => {
   it('lists the notes and where before and after came from', () => {
     const t = table(['hero-desk-after.png']);
     assert.match(t, /\*\*What changed\*\*\n\n1\. Bigger button/);
-    assert.match(t, /Before: https:\/\/example\.com\/ · After: run locally/);
+    assert.ok(t.includes('Before: https://example.com/ · After: run locally'), t);
   });
   it('says where a side came from without the login or query in its address', () => {
     const t = table(['hero-desk-after.png'], {
@@ -250,7 +250,7 @@ describe('tableOf', () => {
       after: 'http://[::1]:4321',
       page: '/pricing?bypass=not-a-real-token',
     });
-    assert.match(t, /Before: https:\/\/preview\.example\.com\/pricing · After: run locally/);
+    assert.ok(t.includes('Before: https://preview.example.com/pricing · After: run locally'), t);
     assert.doesNotMatch(t, /someone|not-a-real/);
   });
 });
