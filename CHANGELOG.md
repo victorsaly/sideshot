@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.0 (unreleased, work in progress)
+## 0.4.0 (2026-10-28)
 
 ### Safer to run
 
