@@ -9,7 +9,10 @@
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "types": ["node"],
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    // Said, not left to the default, which TypeScript 7 changed to strict: the check means the same whatever
+    // version runs it. Stricter checking is a change of its own.
+    "strict": false
   },
   "include": ["skills/**/*.mjs", "test/**/*.mjs", "eslint.config.mjs"]
 }
