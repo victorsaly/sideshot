@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0 (unreleased)
+
+- `--prune [--older-than 30]` takes off the `sideshot` branch the pictures of pull requests closed or merged at
+  least that many days ago, so a project that uses SideShot does not grow for ever. The branch is written again as
+  one commit of what is left, with a push that is refused if anyone pushed to it in between. Those pull requests
+  no longer show their pictures; open ones keep theirs.
+- Development: TypeScript 7, ESLint 10. The type check says `strict: false` rather than taking the default, and
+  Node's types stay on the Node SideShot supports. `main` now needs the checks to pass before a merge.
+
 ## 0.4.0 (2026-10-28)
 
 ### Safer to run

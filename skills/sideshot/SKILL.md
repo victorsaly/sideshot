@@ -80,6 +80,21 @@ the first time) and writes the before/after table into the PR description betwee
 `<!-- sideshot:end -->`; a later run replaces that table rather than adding a second. `--publish` alone pushes and
 prints the table without touching the description.
 
+## 5. Clean up old pictures
+
+Every pull request adds a folder of pictures to the `sideshot` branch, and nothing takes them off by itself. When
+the user asks to clean up, or the branch has grown large, prune it:
+
+```bash
+node <this skill's folder>/scripts/sideshot.mjs --prune [--older-than 30]
+```
+
+It takes off the folders of pull requests closed or merged at least that many days ago (30 unless said), and keeps
+those of open ones. The branch is written again as one commit of what is left, so the repository really gets
+smaller. **The pruned pull requests no longer show their pictures**, so say that to the user first, and ask before
+using a small `--older-than`. The push is refused if anyone pushed to the branch since SideShot read it; run it
+again then.
+
 ## Things to know
 
 - **Playwright comes from the project.** If it is missing, the script says so: ask before adding it
