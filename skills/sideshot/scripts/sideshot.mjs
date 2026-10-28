@@ -1,20 +1,22 @@
 #!/usr/bin/env node
+// Sideshot: see the change, side by side.
 // Why: a pull request that changes what people see is reviewed faster, and more honestly, with the same part
 // of the page before and after the change side by side, on a desk and on a phone. This takes those pictures
 // with Playwright: "before" from the site as it is (production, a preview, or main running locally), "after"
-// from the branch running locally. With --publish it keeps them on a `pr-screenshots` branch that never
+// from the branch running locally. It runs the same under any coding agent, or by hand. With --publish it
+// keeps them on a `sideshot` branch that never
 // merges, so the code stays light, and writes the Markdown table; with --update-pr it also puts that table in
 // the pull request's description, between markers, so running it again replaces the table instead of adding
 // another.
 //
 // Usage (from the project's folder):
-//   node pr-shots.mjs --pr 123 --page /pricing --part hero=.hero [--part table=#plans]
+//   node sideshot.mjs --pr 123 --page /pricing --part hero=.hero [--part table=#plans]
 //     [--before https://example.com] [--after http://localhost:3000]
 //     [--devices desk,phone] [--schemes light,dark] [--click "button:has-text('Open')"]
-//     [--wait 1500] [--setup ./shots-setup.mjs] [--out .pr-shots] [--branch pr-screenshots]
+//     [--wait 1500] [--setup ./sideshot-setup.mjs] [--out .sideshot] [--branch sideshot]
 //     [--publish] [--update-pr]
 //
-// Defaults can live in .pr-shots.json at the project's root:
+// Defaults can live in .sideshot.json at the project's root:
 //   { "before": "https://example.com", "after": "http://localhost:3000", "devices": ["desk", "phone"] }
 //
 // --setup names a module whose default export runs on each page before it opens (async (page, { when,
@@ -65,8 +67,8 @@ const devices = {
 const args = process.argv.slice(2);
 const all = (flag) =>
   args.flatMap((a, i) => (a === flag && args[i + 1] !== undefined ? [args[i + 1]] : []));
-const config = existsSync(join(root, '.pr-shots.json'))
-  ? JSON.parse(readFileSync(join(root, '.pr-shots.json'), 'utf8'))
+const config = existsSync(join(root, '.sideshot.json'))
+  ? JSON.parse(readFileSync(join(root, '.sideshot.json'), 'utf8'))
   : {};
 const one = (flag, key, fallback) => all(flag)[0] ?? config[key] ?? fallback;
 const list = (flag, key, fallback) => {
@@ -81,7 +83,7 @@ const before = one('--before', 'before', '');
 const after = one('--after', 'after', 'http://localhost:3000');
 const wait = Number(one('--wait', 'wait', '1500'));
 const click = one('--click', 'click', '');
-const branch = one('--branch', 'branch', 'pr-screenshots');
+const branch = one('--branch', 'branch', 'sideshot');
 const setupPath = one('--setup', 'setup', '');
 const chosen = list('--devices', 'devices', ['desk', 'phone']).filter((d) => d in devices);
 const schemes = list('--schemes', 'schemes', ['light']).filter((s) => s === 'light' || s === 'dark');
@@ -96,12 +98,12 @@ if (!/^\d+$/.test(pr) || parts.length === 0 || before === '') {
   console.error(
     'Give the pull request, where "before" lives, and at least one part:\n' +
       '  --pr 123 --before https://example.com --part hero=.hero\n' +
-      '(--before and --after can also be set in .pr-shots.json)',
+      '(--before and --after can also be set in .sideshot.json)',
   );
   process.exit(1);
 }
 
-const out = resolve(root, one('--out', 'out', '.pr-shots'), pr);
+const out = resolve(root, one('--out', 'out', '.sideshot'), pr);
 mkdirSync(out, { recursive: true });
 const setup = setupPath
   ? (await import(pathToFileURL(isAbsolute(setupPath) ? setupPath : resolve(root, setupPath)).href))
@@ -197,7 +199,7 @@ const remote = git(['remote', 'get-url', 'origin'], root)
   .replace(/\.git$/, '')
   .replace(/^git@github\.com:/, 'https://github.com/');
 const slug = remote.replace('https://github.com/', '');
-const place = mkdtempSync(join(tmpdir(), 'pr-shots-'));
+const place = mkdtempSync(join(tmpdir(), 'sideshot-'));
 rmSync(place, { recursive: true });
 const known = git(['ls-remote', '--heads', 'origin', branch], root) !== '';
 if (known) {
@@ -207,7 +209,7 @@ if (known) {
   git(['worktree', 'add', '--orphan', '-b', branch, place], root);
   writeFileSync(
     join(place, 'README.md'),
-    '# Before and after\n\nPictures for pull requests, one folder each, made by pr-shots. This branch never merges.\n',
+    '# Sideshot\n\nBefore and after pictures for pull requests, one folder each. This branch never merges.\n',
   );
 }
 try {
@@ -242,15 +244,17 @@ for (const part of parts) {
 }
 const named = (base) =>
   /\/\/(localhost|127\.0\.0\.1)/.test(base) ? 'run locally' : `${base}${page}`;
-lines.push(`<sub>Before: ${named(before)} · After: ${named(after)} · made with pr-shots</sub>`);
+lines.push(
+  `<sub>Before: ${named(before)} · After: ${named(after)} · made with [Sideshot](https://github.com/victorsaly/sideshot)</sub>`,
+);
 const table = lines.join('\n');
 writeFileSync(join(out, 'table.md'), `${table}\n`);
 console.info(`\n${table}\n`);
 
 if (updatePr) {
   // The table goes between markers in the description, so running again replaces it instead of adding one.
-  const start = '<!-- pr-shots:start -->';
-  const end = '<!-- pr-shots:end -->';
+  const start = '<!-- sideshot:start -->';
+  const end = '<!-- sideshot:end -->';
   const body = execFileSync('gh', ['pr', 'view', pr, '--json', 'body', '--jq', '.body'], {
     cwd: root,
     encoding: 'utf8',
