@@ -121,6 +121,22 @@ describe('draw.mjs', () => {
     assert.ok(runs[0].bottom < 70, `marked down to row ${runs[0].bottom}, into the block that only moved`);
   });
 
+  it('boxes a solid block that only got taller, as something changed', async () => {
+    const was = { width: 400, height: 140, rects: [[40, 30, 200, 20, '#3355aa']] };
+    const now = { width: 400, height: 140, rects: [[40, 30, 200, 50, '#3355aa']] };
+    const { changed, runs } = await marked(was, now);
+    assert.equal(changed, 1, JSON.stringify(runs));
+    assert.equal(runs.length, 1, JSON.stringify(runs));
+    assert.ok(runs[0].top < 30 && runs[0].bottom > 79, `box spans rows ${runs[0].top} to ${runs[0].bottom}`);
+  });
+
+  it('rules where a solid block only got shorter', async () => {
+    const was = { width: 400, height: 140, rects: [[40, 30, 200, 50, '#3355aa']] };
+    const now = { width: 400, height: 140, rects: [[40, 30, 200, 20, '#3355aa']] };
+    const { changed } = await marked(was, now);
+    assert.equal(changed, 1);
+  });
+
   it('rules a line where something was taken out', async () => {
     const was = { width: 400, height: 140, rects: [[40, 30, 200, 20, '#cc3300'], [40, 70, 200, 20, '#222222']] };
     const now = { width: 400, height: 140, rects: [[40, 70, 200, 20, '#222222']] };

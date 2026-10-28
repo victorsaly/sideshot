@@ -81,9 +81,26 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
     const inAfter = new Set(B.hashes);
     const added = new Uint8Array(B.h), cuts = [];
     const cut = (run, y) => { if (!inAfter.has(run.hash)) cuts.push(y); };
+    // A stretch that lined up but changed height is space that grew or shrank, unless its rows carry ink across
+    // a good part of the width (5%, more than a card's borders): then it is content, a bar or a button, and its
+    // new height is a change.
+    const bg = [B.d[0], B.d[1], B.d[2]];
+    const isContent = (y) => {
+      let inked = 0;
+      for (let k = y * B.w * 4, e = k + B.w * 4; k < e; k += 4)
+        if (Math.abs(B.d[k] - bg[0]) + Math.abs(B.d[k + 1] - bg[1]) + Math.abs(B.d[k + 2] - bg[2]) > 60) inked++;
+      return inked > B.w * 0.05;
+    };
     let i = 0, j = 0;
     while (i < n && j < m) {
-      if (same(i, j)) { i++; j++; }
+      if (same(i, j)) {
+        const was = RA[i].end - RA[i].start, now = RB[j].end - RB[j].start;
+        if (was !== now && isContent(RB[j].start)) {
+          if (now > was) added.fill(1, RB[j].start, RB[j].end);
+          else cuts.push(RB[j].end);
+        }
+        i++; j++;
+      }
       else if (L[(i + 1) * (m + 1) + j] >= L[i * (m + 1) + j + 1]) { cut(RA[i], RB[j].start); i++; }
       else { added.fill(1, RB[j].start, RB[j].end); j++; }
     }
