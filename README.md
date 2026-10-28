@@ -13,6 +13,7 @@ touches, pictures them before and after on a desk and a phone (and in dark mode,
 marks what changed, shows you first, then puts the side-by-side table in the pull request. Reviewers see the change instead of imagining it.</p>
 
 <p align="center">
+  <a href="https://skills.victorsaly.com/sideshot"><strong>See it at work</strong></a> &nbsp;·&nbsp;
   <a href="#start"><strong>Get started</strong></a> &nbsp;·&nbsp;
   <a href="#what-you-get"><strong>What you get</strong></a> &nbsp;·&nbsp;
   <a href="#how-it-works"><strong>How it works</strong></a> &nbsp;·&nbsp;
@@ -21,7 +22,8 @@ marks what changed, shows you first, then puts the side-by-side table in the pul
 
 <p align="center">
   <a href="https://skills.sh"><img src="https://img.shields.io/badge/Agent_Skill-Claude_Code_%C2%B7_Codex_%C2%B7_Cursor_%C2%B7_OpenCode-000000?style=flat-square" alt="An Agent Skill, for Claude Code, Codex, Cursor and OpenCode" /></a>
-  <img src="https://img.shields.io/badge/version-0.3.1-000000?style=flat-square" alt="Version 0.3.1" />
+  <img src="https://img.shields.io/badge/version-0.4.0-000000?style=flat-square" alt="Version 0.4.0" />
+  <a href="https://github.com/victorsaly/sideshot/actions/workflows/check.yml"><img src="https://img.shields.io/github/actions/workflow/status/victorsaly/sideshot/check.yml?branch=main&style=flat-square&label=check&color=000000" alt="Checks on main" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-000000?style=flat-square" alt="MIT licence" /></a>
 </p>
 
@@ -170,8 +172,13 @@ The skill needs nothing installed beyond Playwright in the project it runs in. T
 npm install && npx playwright install chromium
 npm test                # what it is asked, checked, and the table it writes
 npm run test:coverage   # the same, with at least 90% of lib.mjs covered
-npm run test:e2e        # a before and an after page, pictured for real in Chromium
+npm run test:e2e        # pictured for real in Chromium, what draw.mjs marks, and publishing to a local repo
+npm run lint            # ESLint
+npm run typecheck       # TypeScript checks the JavaScript, nothing is built
+npm run check           # all of the above, as CI runs it on every pull request
 ```
+
+What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Licence
 
