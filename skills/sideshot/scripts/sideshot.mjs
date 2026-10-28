@@ -47,10 +47,64 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import {
+  UsageError,
+  bodyWith,
+  configOf,
+  isPicture,
+  label,
+  optionsOf,
+  pictureName,
+  plainOf,
+  slugOf,
+  swatches,
+  tableOf,
+} from './lib.mjs';
 
 const git = (args, cwd) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 // The project is the git repository the command runs in, not the folder this script ships in.
-const root = git(['rev-parse', '--show-toplevel'], process.cwd());
+let root;
+try {
+  root = git(['rev-parse', '--show-toplevel'], process.cwd());
+} catch {
+  console.error('Run SideShot from inside the project\'s git repository.');
+  process.exit(1);
+}
+
+// What was asked, checked before anything opens: a mistake is said plainly, and nothing is half done.
+let options;
+let slug = null;
+try {
+  const configFile = join(root, '.sideshot.json');
+  options = optionsOf(
+    process.argv.slice(2),
+    existsSync(configFile) ? configOf(readFileSync(configFile, 'utf8')) : {},
+  );
+  if (options.publish) {
+    let remote = '';
+    try {
+      remote = git(['remote', 'get-url', 'origin'], root);
+    } catch {
+      // Said below.
+    }
+    slug = slugOf(remote);
+    if (slug === null)
+      throw new UsageError('--publish and --update-pr need an origin on GitHub, where the pictures are kept.');
+    try {
+      git(['check-ref-format', '--branch', options.branch], root);
+    } catch {
+      throw new UsageError(`git does not take ${options.branch} as a branch name; give --branch another.`);
+    }
+  }
+} catch (error) {
+  if (!(error instanceof UsageError)) throw error;
+  console.error(error.message);
+  process.exit(1);
+}
+const {
+  pr, page, before, after, wait, click, branch, setupPath, chosen, schemes, parts, notes, accent,
+  markChanges, watermark, publish, updatePr,
+} = options;
 
 // Playwright comes from the project, so its version and its browsers are the project's own.
 let chromium;
@@ -68,104 +122,10 @@ try {
   process.exit(2);
 }
 
-// Where to picture it: a named size, or your own (WIDTHxHEIGHT, with :mobile for a touch screen). The default is
-// desk and phone, a web browser and a mobile one.
-const sizes = {
-  desk: '1280x900',
-  web: '1280x900',
-  desktop: '1280x900',
-  laptop: '1440x900',
-  wide: '1920x1080',
-  tablet: '820x1180:mobile',
-  phone: '390x844:mobile',
-  mobile: '390x844:mobile',
-};
-
-/** "phone", "1440x900", or "pixel=412x915:mobile"; null when the size cannot be read. */
-function deviceOf(spec) {
-  const [name, size = name] = String(spec).split('=').map((s) => s.trim());
-  const m = /^(\d{2,5})x(\d{2,5})(:mobile)?$/i.exec(sizes[size.toLowerCase()] ?? size);
-  if (!m || !name) return null;
-  const mobile = Boolean(m[3]);
-  return {
-    // The name goes into file names, so only letters, digits and dashes.
-    name: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-    size: `${m[1]}×${m[2]}`,
-    options: {
-      viewport: { width: Number(m[1]), height: Number(m[2]) },
-      isMobile: mobile,
-      hasTouch: mobile,
-    },
-  };
-}
-
-/** Every value given for a flag, in order: --part hero=.hero --part list=.list. */
-const args = process.argv.slice(2);
-const all = (flag) =>
-  args.flatMap((a, i) => (a === flag && args[i + 1] !== undefined ? [args[i + 1]] : []));
-const config = existsSync(join(root, '.sideshot.json'))
-  ? JSON.parse(readFileSync(join(root, '.sideshot.json'), 'utf8'))
-  : {};
-const one = (flag, key, fallback) => all(flag)[0] ?? config[key] ?? fallback;
-const list = (flag, key, fallback) => {
-  const given = all(flag)[0];
-  if (given !== undefined) return given.split(',').map((s) => s.trim()).filter(Boolean);
-  return Array.isArray(config[key]) ? config[key] : fallback;
-};
-
-const pr = one('--pr', 'pr', '');
-const page = one('--page', 'page', '/');
-const before = one('--before', 'before', '');
-const after = one('--after', 'after', 'http://localhost:3000');
-const wait = Number(one('--wait', 'wait', '1500'));
-const click = one('--click', 'click', '');
-const branch = one('--branch', 'branch', 'sideshot');
-const setupPath = one('--setup', 'setup', '');
-// In .sideshot.json, devices is a list like the flag's, or a map of your own names to sizes.
-const deviceSpecs =
-  all('--devices')[0] === undefined &&
-  typeof config.devices === 'object' &&
-  config.devices !== null &&
-  !Array.isArray(config.devices)
-    ? Object.entries(config.devices).map(([name, size]) => `${name}=${String(size)}`)
-    : list('--devices', 'devices', ['desk', 'phone']);
-const chosen = deviceSpecs.map(deviceOf);
-if (chosen.some((d) => d === null) || chosen.length === 0) {
-  console.error(
-    `Cannot read --devices ${deviceSpecs.join(',')}. Use a name (${Object.keys(sizes).join(', ')}),\n` +
-      'a size like 1440x900, or your own name and size like pixel=412x915:mobile.',
-  );
-  process.exit(1);
-}
-// The colour that marks what changed. auto picks, from the pictures, the one least like the page's own colours.
-const accent = one('--accent', 'accent', 'auto');
-const schemes = list('--schemes', 'schemes', ['light']).filter((s) => s === 'light' || s === 'dark');
-const parts = all('--part').map((p) => {
-  const [name, ...selector] = p.split('=');
-  return { name: name || 'page', selector: selector.join('=') || 'body' };
-});
-// What changed, said on the picture: a numbered ring around each noted element in the "after" picture.
-const notes = all('--note').map((n, i) => {
-  const [selector, ...words] = n.split('=');
-  return { n: i + 1, selector: selector ?? '', text: words.join('=') };
-});
-const markChanges = args.includes('--mark-changes') || config.markChanges === true;
-// Each pair carries a small SideShot tag in the corner of its "after" picture, unless asked not to.
-const watermark = !args.includes('--no-watermark') && config.watermark !== false;
-const publish = args.includes('--publish') || args.includes('--update-pr');
-const updatePr = args.includes('--update-pr');
-
-if (!/^\d+$/.test(pr) || parts.length === 0 || before === '') {
-  console.error(
-    'Give the pull request, where "before" lives, and at least one part:\n' +
-      '  --pr 123 --before https://example.com --part hero=.hero\n' +
-      '(--before and --after can also be set in .sideshot.json)',
-  );
-  process.exit(1);
-}
-
-const out = resolve(root, one('--out', 'out', '.sideshot'), pr);
+const out = resolve(root, options.out, pr);
 mkdirSync(out, { recursive: true });
+// The setup module is the project's own code, run as it is, like its Playwright: only run SideShot in a project
+// you trust.
 const setup = setupPath
   ? (await import(pathToFileURL(isAbsolute(setupPath) ? setupPath : resolve(root, setupPath)).href))
       .default
@@ -236,15 +196,6 @@ async function picture(p, selector, file, noted = [], margin = 0) {
     { notes: noted, origin: clip },
   );
 }
-
-// The colours a mark can take. Marigold is SideShot's own; the others are there for pages it would vanish on.
-const swatches = {
-  marigold: '#ffc400',
-  magenta: '#ff2e88',
-  cyan: '#00b4ff',
-  violet: '#8b5cf6',
-  lime: '#5ee01b',
-};
 
 /** Runs in the page: the swatch least like the colours the pictures already use (marigold when it is free). */
 async function pickAccent({ images, choices }) {
@@ -395,7 +346,6 @@ async function finish({ src, before, rings, colour, scale, tag }) {
   return { png: btoa(bin), changed };
 }
 
-const label = (device, scheme) => (scheme === 'light' ? device : `${device}-${scheme}`);
 const browser = await chromium.launch();
 const missing = [];
 const ringsOf = new Map();
@@ -429,10 +379,10 @@ for (const device of chosen) {
           await p.locator(click).first().click();
           await p.waitForTimeout(wait);
         }
-        const name = `${part.name}-${label(device.name, scheme)}-${when}.png`;
+        const name = pictureName(part.name, device.name, scheme, when);
         // An older picture of a part that is no longer there must not pass for the current one.
         rmSync(join(out, name), { force: true });
-        rmSync(join(out, name.replace(/\.png$/, '-plain.png')), { force: true });
+        rmSync(join(out, plainOf(name)), { force: true });
         const rings = await picture(
           p,
           part.selector,
@@ -450,15 +400,11 @@ for (const device of chosen) {
 
 // Each picture is finished in a browser canvas: what changed is marked, the notes are ringed, the tag goes in
 // the corner. A picture drawn on keeps a plain copy beside it.
-const pngs = readdirSync(out).filter((f) => f.endsWith('.png') && !f.endsWith('-plain.png'));
+const pngs = readdirSync(out).filter(isPicture);
 const dataOf = (name) => `data:image/png;base64,${readFileSync(join(out, name)).toString('base64')}`;
 const finisher = await browser.newPage();
 const marking = markChanges || ringsOf.size > 0;
-let colour = swatches[accent.toLowerCase()] ?? (/^#[0-9a-f]{6}$/i.test(accent) ? accent : null);
-if (colour === null && accent !== 'auto') {
-  console.error(`Cannot read --accent ${accent}. Use auto, ${Object.keys(swatches).join(', ')}, or a colour like #ff5a1f.`);
-  process.exit(1);
-}
+let colour = accent === 'auto' ? null : accent;
 if (colour === null)
   colour = marking
     ? await finisher.evaluate(pickAccent, { images: pngs.map(dataOf), choices: Object.values(swatches) })
@@ -483,7 +429,7 @@ for (const f of pngs) {
     tag,
   });
   if (rings.length > 0 || result.changed > 0)
-    cpSync(join(out, f), join(out, f.replace(/\.png$/, '-plain.png')));
+    cpSync(join(out, f), join(out, plainOf(f)));
   writeFileSync(join(out, f), Buffer.from(result.png, 'base64'));
   if (result.changed > 0) console.info(`Marked ${String(result.changed)} changed area(s) on ${f}`);
 }
@@ -494,13 +440,9 @@ if (missing.length > 0) console.info(`Not on the page (new or removed): ${missin
 if (!publish) process.exit(0);
 
 // Kept on their own branch: a temporary checkout of it, the pictures copied in, one commit, pushed.
-const remote = git(['remote', 'get-url', 'origin'], root)
-  .replace(/\.git$/, '')
-  .replace(/^git@github\.com:/, 'https://github.com/');
-const slug = remote.replace('https://github.com/', '');
 const place = mkdtempSync(join(tmpdir(), 'sideshot-'));
 rmSync(place, { recursive: true });
-const known = git(['ls-remote', '--heads', 'origin', branch], root) !== '';
+const known = git(['ls-remote', 'origin', `refs/heads/${branch}`], root) !== '';
 if (known) {
   git(['fetch', 'origin', branch], root);
   git(['worktree', 'add', '-B', branch, place, `origin/${branch}`], root);
@@ -515,8 +457,7 @@ try {
   // The pull request's folder is replaced, not added to, so a picture taken out locally goes from there too.
   rmSync(join(place, pr), { recursive: true, force: true });
   mkdirSync(join(place, pr), { recursive: true });
-  for (const f of readdirSync(out))
-    if (f.endsWith('.png') && !f.endsWith('-plain.png')) cpSync(join(out, f), join(place, pr, f));
+  for (const f of pngs) cpSync(join(out, f), join(place, pr, f));
   git(['add', '-A'], place);
   if (git(['status', '--porcelain'], place) !== '') {
     git(['commit', '-m', `chore: before and after for #${pr}`], place);
@@ -526,46 +467,18 @@ try {
   git(['worktree', 'remove', '--force', place], root);
 }
 
-const url = (file) => `https://raw.githubusercontent.com/${slug}/${branch}/${pr}/${file}`;
 const files = new Set(readdirSync(out));
-const lines = ['## Before and after', ''];
-for (const part of parts) {
-  for (const device of chosen) {
-    for (const scheme of schemes) {
-      const name = label(device.name, scheme);
-      const b = `${part.name}-${name}-before.png`;
-      const a = `${part.name}-${name}-after.png`;
-      if (!files.has(b) && !files.has(a)) continue;
-      lines.push(`**${part.name}, ${name}** <sub>${device.size}</sub>`, '', '| Before | After |', '| --- | --- |');
-      const cell = (f) => (files.has(f) ? `<img src="${url(f)}" width="420">` : '(not there)');
-      lines.push(`| ${cell(b)} | ${cell(a)} |`, '');
-    }
-  }
-}
-// The numbered rings on the "after" pictures, said in words.
-if (notes.length > 0)
-  lines.push('**What changed**', '', ...notes.map((note) => `${String(note.n)}. ${note.text}`), '');
-const named = (base) =>
-  /\/\/(localhost|127\.0\.0\.1)/.test(base) ? 'run locally' : `${base}${page}`;
-lines.push(
-  `<sub>Before: ${named(before)} · After: ${named(after)} · made with [SideShot](https://github.com/victorsaly/sideshot)</sub>`,
-);
-const table = lines.join('\n');
+const table = tableOf({ parts, chosen, schemes, notes, files, before, after, page, slug, branch, pr });
 writeFileSync(join(out, 'table.md'), `${table}\n`);
 console.info(`\n${table}\n`);
 
 if (updatePr) {
   // The table goes between markers in the description, so running again replaces it instead of adding one.
-  const start = '<!-- sideshot:start -->';
-  const end = '<!-- sideshot:end -->';
   const body = execFileSync('gh', ['pr', 'view', pr, '--json', 'body', '--jq', '.body'], {
     cwd: root,
     encoding: 'utf8',
   });
-  const block = `${start}\n${table}\n${end}`;
-  const next = body.includes(start)
-    ? body.replace(new RegExp(`${start}[\\s\\S]*?${end}`), block)
-    : `${body.trimEnd()}\n\n${block}\n`;
+  const next = bodyWith(body, table);
   const file = join(out, 'body.md');
   writeFileSync(file, next);
   execFileSync('gh', ['pr', 'edit', pr, '--body-file', file], { cwd: root, stdio: 'inherit' });

@@ -162,6 +162,17 @@ SideShot grew out of [agentic-blog](https://github.com/victorsaly/agentic-blog),
 changes a page carries its before and after; it has been taking those pictures there since
 [#111](https://github.com/victorsaly/agentic-blog/pull/111), and became its own tool in October 2026.
 
+## Working on SideShot
+
+The skill needs nothing installed beyond Playwright in the project it runs in. To work on it here:
+
+```bash
+npm install && npx playwright install chromium
+npm test                # what it is asked, checked, and the table it writes
+npm run test:coverage   # the same, with at least 90% of lib.mjs covered
+npm run test:e2e        # a before and an after page, pictured for real in Chromium
+```
+
 ## Licence
 
 MIT, © Victor Saly
