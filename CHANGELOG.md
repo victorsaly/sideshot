@@ -1,11 +1,14 @@
 # Changelog
 
-## 0.5.0 (unreleased)
+## 0.4.1 (2026-10-28)
 
 - `--prune [--older-than 30]` takes off the `sideshot` branch the pictures of pull requests closed or merged at
   least that many days ago, so a project that uses SideShot does not grow for ever. The branch is written again as
   one commit of what is left, with a push that is refused if anyone pushed to it in between. Those pull requests
-  no longer show their pictures; open ones keep theirs.
+  no longer show their pictures; open ones keep theirs. Only folders named for a pull request are taken off.
+- `gh` is always asked about the repository origin is (`--repo`), when publishing and when pruning, never about
+  one it would pick by itself.
+- A flag given last, with no value after it (`--branch`), is refused rather than taken as its default.
 - Development: TypeScript 7, ESLint 10. The type check says `strict: false` rather than taking the default, and
   Node's types stay on the Node SideShot supports. `main` now needs the checks to pass before a merge.
 
