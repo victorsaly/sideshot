@@ -1,10 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.5.2 (2026-10-28)
 
 - `--mark-changes` marks only the card that changed when cards sit side by side. Where both pictures have an
   empty gutter from top to bottom, each column is compared on its own; before, a card that grew boxed the rows
-  of the card beside it too. A picture with no such gutter is compared across its width, as before.
+  of the card beside it too. A picture with no such gutter is compared across its width, as before. A thin thing taken out in a column of its own is still ruled.
 
 ## 0.5.1 (2026-10-28)
 
