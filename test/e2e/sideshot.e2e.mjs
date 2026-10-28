@@ -87,10 +87,12 @@ describe('sideshot.mjs', { concurrency: true }, () => {
   });
 
   it('refuses what it cannot use before opening anything, and writes nothing', async () => {
-    for (const [more, said] of [
+    /** @type {Array<[string[], RegExp]>} */
+    const asks = [
       [['--part', 'a=.a', '--branch', '--upload-pack=x'], /Cannot use --branch/],
       [['--part', '../../escaped=.card'], /Cannot name a picture/],
-    ]) {
+    ];
+    for (const [more, said] of asks) {
       const result = await shoot('9', ...more);
       assert.equal(result.status, 1);
       assert.match(result.stderr, said);
