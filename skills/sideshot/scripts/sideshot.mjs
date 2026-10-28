@@ -150,7 +150,7 @@ const notes = all('--note').map((n, i) => {
   return { n: i + 1, selector: selector ?? '', text: words.join('=') };
 });
 const markChanges = args.includes('--mark-changes') || config.markChanges === true;
-// Every picture carries a small SideShot tag in its corner, unless asked not to.
+// Each pair carries a small SideShot tag in the corner of its "after" picture, unless asked not to.
 const watermark = !args.includes('--no-watermark') && config.watermark !== false;
 const publish = args.includes('--publish') || args.includes('--update-pr');
 const updatePr = args.includes('--update-pr');
@@ -471,14 +471,16 @@ for (const f of pngs) {
   const pair = f.replace(/-after\.png$/, '-before.png');
   const compare = markChanges && f.endsWith('-after.png') && existsSync(join(out, pair));
   const rings = ringsOf.get(f) ?? [];
-  if (!compare && rings.length === 0 && !watermark) continue;
+  // One tag to a pair: it goes on the "after" picture only.
+  const tag = watermark && f.endsWith('-after.png');
+  if (!compare && rings.length === 0 && !tag) continue;
   const result = await finisher.evaluate(finish, {
     src: dataOf(f),
     before: compare ? dataOf(pair) : null,
     rings,
     colour,
     scale: 2,
-    tag: watermark,
+    tag,
   });
   if (rings.length > 0 || result.changed > 0)
     cpSync(join(out, f), join(out, f.replace(/\.png$/, '-plain.png')));

@@ -21,7 +21,7 @@ marks what changed, shows you first, then puts the side-by-side table in the pul
 
 <p align="center">
   <a href="https://skills.sh"><img src="https://img.shields.io/badge/Agent_Skill-Claude_Code_%C2%B7_Codex_%C2%B7_Cursor_%C2%B7_OpenCode-000000?style=flat-square" alt="An Agent Skill, for Claude Code, Codex, Cursor and OpenCode" /></a>
-  <img src="https://img.shields.io/badge/version-0.3.0-000000?style=flat-square" alt="Version 0.3.0" />
+  <img src="https://img.shields.io/badge/version-0.3.1-000000?style=flat-square" alt="Version 0.3.1" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-000000?style=flat-square" alt="MIT licence" /></a>
 </p>
 
@@ -141,7 +141,7 @@ node skills/sideshot/scripts/sideshot.mjs --pr 123 --page /pricing --part plans=
 | `--note "selector=words"` | Rings that element on the after picture with a number; the words go under the table. Repeat. |
 | `--mark-changes` | Outlines what was added or changed; a dashed rule where something was taken out. |
 | `--accent auto` | The marking colour: `auto` (marigold, unless the page is close to it), `magenta`, `cyan`, `violet`, `lime`, or `#hex`. |
-| `--no-watermark` | Leaves off the small SideShot tag in each picture's corner. |
+| `--no-watermark` | Leaves off the small SideShot tag in the corner of each "after" picture. |
 | `--setup ./file.mjs` | Runs on each page before it opens: stand-in data, a cookie, a login. |
 | `--publish` | Pushes the pictures to the `sideshot` branch and prints the table. |
 | `--update-pr` | Also writes the table into the PR description (needs the GitHub CLI). |

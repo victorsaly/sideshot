@@ -91,7 +91,7 @@ prints the table without touching the description.
 - **One marking colour.** Rings and change marks are marigold unless the page itself is close to it; then the
   script picks magenta, cyan, violet or lime, whichever the pictures use least, and says so. `--accent cyan` or
   `--accent "#ff5a1f"` pins one (for a brand, or a reviewer's habit).
-- **Every picture carries a small SideShot tag** in its bottom corner. `--no-watermark` (or
+- **Each pair carries one small SideShot tag**, in the bottom corner of the "after" picture. `--no-watermark` (or
   `"watermark": false`) leaves it off. A picture drawn on keeps a plain copy beside it (`*-plain.png`), which is
   not published.
 - **Publishing writes to the repository** (a branch and the PR description): do it only for the user's own PR,
