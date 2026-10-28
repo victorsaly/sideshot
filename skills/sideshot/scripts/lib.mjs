@@ -226,6 +226,33 @@ export function optionsOf(args, config = {}) {
   };
 }
 
+/** What --prune was asked: the branch the pictures are kept on, and how many days after a pull request closes its
+ * pictures may go. */
+export function pruneOptionsOf(args, config = {}) {
+  const one = (flag, key, fallback) => {
+    const i = args.indexOf(flag);
+    return String(i !== -1 && args[i + 1] !== undefined ? args[i + 1] : config[key] ?? fallback);
+  };
+  const branch = one('--branch', 'branch', 'sideshot');
+  if (!isBranchName(branch))
+    throw new UsageError(`Cannot use --branch ${branch}. Use a branch name like sideshot or shots/ui.`);
+  const days = one('--older-than', 'olderThan', '30');
+  if (!/^\d+$/.test(days))
+    throw new UsageError(`--older-than is a number of days after a pull request closed, like 30 (not ${days}).`);
+  return { branch, olderThan: Number(days) };
+}
+
+/** The pull requests' folders whose pictures may go: closed or merged at least that many days before now. A folder
+ * of an open pull request, of one not in the list, or not named for one at all, is kept. */
+export function toPrune(folders, prs, now, olderThan) {
+  const closed = new Map(
+    prs.filter((p) => p.state !== 'OPEN' && p.closedAt).map((p) => [String(p.number), Date.parse(p.closedAt)]),
+  );
+  return folders.filter(
+    (f) => /^\d+$/.test(f) && closed.has(f) && now - closed.get(f) >= olderThan * 86_400_000,
+  );
+}
+
 export const label = (device, scheme) => (scheme === 'light' ? device : `${device}-${scheme}`);
 
 /** The one way a picture is named, so the pictures taken and the table's links always agree. Its names were
