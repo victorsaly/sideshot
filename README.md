@@ -83,11 +83,13 @@ Add `--note` and `--mark-changes` and the picture says what changed: a numbered 
 <p align="center"><img src="docs/assets/example-marks.png" alt="On a phone, before and after: the after picture rings the merge button with a 1, boxes the changed buttons, and marks with a dashed rule where a paragraph was removed" width="720" /></p>
 
 - **What changed, said on the picture.** A numbered ring around what the change is about, with its words under
-  the table, and an outline on everything else that differs. Content that only moved is left alone.
+  the table, and an outline on everything else that differs. Content that only moved is left alone, and so is a
+  card beside the one that changed.
 - **Your screens, not ours.** Desk and phone by default; tablet, laptop, wide, or any size you name.
 - **A colour that stands out on your page.** Marks are marigold unless your page is marigold too; then SideShot
   picks the colour your pictures use least.
-- **Pictures that stay out of your code.** They live on a `sideshot` branch that never merges.
+- **Pictures that stay out of your code.** They live on a `sideshot` branch that never merges, and `--prune`
+  takes off the pictures of pull requests closed long ago, so it does not grow for ever.
 - **A table that does not pile up.** The description gets one before/after table between markers; running again
   replaces it.
 - **You look first, and what you saw is what goes in.** One overview sheet a part, before beside after, to look
@@ -181,7 +183,7 @@ changes a page carries its before and after; it has been taking those pictures t
 
 ## Working on SideShot
 
-The skill needs nothing installed beyond Playwright in the project it runs in. To work on it here:
+The skill needs nothing installed beyond Playwright, in the project it runs in or globally. To work on it here:
 
 ```bash
 npm install && npx playwright install chromium
@@ -193,7 +195,8 @@ npm run typecheck       # TypeScript checks the JavaScript, nothing is built
 npm run check           # all of the above, as CI runs it on every pull request
 ```
 
-What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
+What changed in each version is in [CHANGELOG.md](CHANGELOG.md), and in the
+[releases](https://github.com/victorsaly/sideshot/releases).
 
 ## Licence
 
