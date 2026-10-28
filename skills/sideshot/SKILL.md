@@ -24,7 +24,8 @@ From the diff, work out:
   first; the pictures go into its description.
 - **The page or pages** the change shows on (`--page /pricing`). One run per page.
 - **The parts** to picture, each a name and a CSS selector: `--part hero=.hero --part plans=#plans`. Picture the
-  part that changed, not the whole page, so before and after line up. `--part page=body` for a whole page.
+  part that changed, not the whole page, so before and after line up. `--part page=body` for a whole page. The
+  name goes into file names, so it is letters, digits, `-` and `_`, and each part has its own.
 - **What must be done first** for the part to show: `--click "button:has-text('Open')"` (a panel, a tab, a menu).
   Closed `<details>` around a part are opened for you.
 - **Dark mode** if the change touches colour or contrast: `--schemes light,dark`.
