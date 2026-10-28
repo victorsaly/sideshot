@@ -87,15 +87,27 @@ esac
     });
   const prune = (more = [], using = env) => run(['--prune', ...more], { cwd: project, env: using });
   const onBranch = () => sh(bare, ['ls-tree', '-r', '--name-only', 'sideshot']).split('\n');
-  /** The pull requests gh lists: 5 closed that many days ago, 6 still open. */
-  const closedDaysAgo = (days) =>
+  /** The pull requests gh lists: 5 and 7 closed that many days ago, 6 still open. */
+  const closedDaysAgo = (days) => {
+    const closedAt = new Date(Date.now() - days * 86_400_000).toISOString();
     writeFileSync(
       prs,
       JSON.stringify([
-        { number: 5, state: 'MERGED', closedAt: new Date(Date.now() - days * 86_400_000).toISOString() },
+        { number: 5, state: 'MERGED', closedAt },
         { number: 6, state: 'OPEN', closedAt: null },
+        { number: 7, state: 'CLOSED', closedAt },
       ]),
     );
+  };
+  /** Puts a file, not a folder, named 7 on the sideshot branch, as one more commit on it. */
+  const fileNamedSeven = () => {
+    const blob = execFileSync(realGit, ['hash-object', '-w', '--stdin'], { cwd: bare, input: 'not a folder\n', encoding: 'utf8' }).trim();
+    const tip = sh(bare, ['rev-parse', 'sideshot']);
+    const listed = `${sh(bare, ['ls-tree', tip])}\n100644 blob ${blob}\t7\n`;
+    const tree = execFileSync(realGit, ['mktree'], { cwd: bare, input: listed, encoding: 'utf8' }).trim();
+    const commit = sh(bare, ['commit-tree', tree, '-p', tip, '-m', 'A file named like a pull request']);
+    sh(bare, ['update-ref', 'refs/heads/sideshot', commit]);
+  };
 
   it('pushes the pictures to the sideshot branch and puts the table in the description', async () => {
     const result = await publish(['--part', 'card=.card', '--update-pr']);
@@ -106,7 +118,11 @@ esac
     assert.match(text, /^Fixes the pricing card\.\n\n<!-- sideshot:start -->/);
     const link = 'https://raw.githubusercontent.com/test-owner/test-repo/sideshot/5/card-desk-after.png';
     assert.ok(text.includes(`<img src="${link}"`), text);
-    assert.match(readFileSync(calls, 'utf8'), /^pr view 5 --json body --jq \.body\npr edit 5 --body-file .*body\.md\n$/);
+    // Asked of the repository origin is, never of one gh would pick by itself.
+    assert.match(
+      readFileSync(calls, 'utf8'),
+      /^pr view 5 --json body --jq \.body --repo test-owner\/test-repo\npr edit 5 --body-file .*body\.md --repo test-owner\/test-repo\n$/,
+    );
     // The checkout it used to commit is gone again.
     assert.equal(sh(project, ['worktree', 'list']).split('\n').length, 1);
   });
@@ -141,11 +157,14 @@ esac
 
   it('prunes the pictures of a pull request closed long ago, leaving the branch one commit of what is left', async () => {
     closedDaysAgo(40);
+    fileNamedSeven();
     assert.ok(Number(sh(bare, ['rev-list', '--count', 'sideshot'])) > 1);
     const result = await prune();
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /Took the pictures of #5 off sideshot/);
-    assert.deepEqual(onBranch(), ['6/card-desk-after.png', '6/card-desk-before.png', 'README.md']);
+    // PR 7 closed long ago too, but its name is a file's here, not a folder of pictures: it stays.
+    assert.deepEqual(onBranch(), ['6/card-desk-after.png', '6/card-desk-before.png', '7', 'README.md']);
+    assert.match(readFileSync(calls, 'utf8'), /^pr list --state all --limit 1000 --json number,state,closedAt --repo test-owner\/test-repo$/m);
     assert.equal(sh(bare, ['rev-list', '--count', 'sideshot']), '1');
   });
 

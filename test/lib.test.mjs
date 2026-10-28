@@ -13,6 +13,7 @@ import {
   optionsOf,
   pictureName,
   plainOf,
+  prFoldersOf,
   pruneOptionsOf,
   toPrune,
   slugOf,
@@ -199,6 +200,11 @@ describe('optionsOf', () => {
       { n: 2, selector: '.b', text: '' },
     ]);
   });
+  it('refuses a flag given without its value, rather than falling back to the default', () => {
+    refused([...base, '--branch'], /--branch needs a value/);
+    refused([...base, '--wait'], /--wait needs a value/);
+    refused([...base, '--part'], /--part needs a value/);
+  });
   it('reads the switches', () => {
     const o = asked('--mark-changes', '--no-watermark', '--update-pr');
     assert.equal(o.markChanges, true);
@@ -303,6 +309,10 @@ describe('pruneOptionsOf', () => {
       usage(() => pruneOptionsOf(['--prune', '--older-than', days]), /--older-than is a number of days/);
     usage(() => pruneOptionsOf(['--prune', '--branch', '--upload-pack=x']), /Cannot use --branch/);
   });
+  it('refuses a flag given without its value, rather than falling back to the default', () => {
+    usage(() => pruneOptionsOf(['--prune', '--branch']), /--branch needs a value/);
+    usage(() => pruneOptionsOf(['--prune', '--older-than']), /--older-than needs a value/);
+  });
 });
 
 describe('toPrune', () => {
@@ -321,5 +331,19 @@ describe('toPrune', () => {
   });
   it("keeps what is open, what it knows nothing of, and what is not a pull request's folder", () => {
     assert.deepEqual(toPrune(['4', '99', 'README.md', 'x1'], prs, now, 0), []);
+  });
+});
+
+describe('prFoldersOf', () => {
+  it('names the folders git lists that are named for a pull request, and no file', () => {
+    const entries = [
+      '040000 tree aaaa\t5',
+      '100644 blob bbbb\t6',
+      '120000 blob cccc\t7',
+      '040000 tree dddd\tnotes',
+      '100644 blob eeee\tREADME.md',
+      '040000 tree ffff\t12',
+    ];
+    assert.deepEqual(prFoldersOf(entries), ['5', '12']);
   });
 });
