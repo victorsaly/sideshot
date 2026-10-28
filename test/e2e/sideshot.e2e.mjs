@@ -1,11 +1,12 @@
 // SideShot run for real: a "before" and an "after" page served here, pictured in a browser, without publishing.
 // Needs Playwright and its Chromium (npm i, then npx playwright install chromium).
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readdirSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import { addressOf, badge, isPng, pageOf, run, serve } from './helpers.mjs';
+import { addressOf, badge, isPng, pageOf, repo, run, serve } from './helpers.mjs';
 
 // Each test has a pull request, so a folder, of its own: they run at once.
 describe('sideshot.mjs', { concurrency: true }, () => {
@@ -124,6 +125,20 @@ describe('sideshot.mjs', { concurrency: true }, () => {
       assert.doesNotMatch(result.stdout, /Not on the page/);
     } finally {
       late.close();
+    }
+  });
+
+  it('says nothing of git in a project with no origin', async () => {
+    const project = mkdtempSync(join(tmpdir(), 'sideshot-no-origin-'));
+    try {
+      execFileSync('git', ['init', '-q'], { cwd: project });
+      symlinkSync(join(repo, 'node_modules'), join(project, 'node_modules'));
+      const result = await run(['--pr', '17', '--before', addressOf(was), '--after', addressOf(now), '--part', 'card=.card',
+        '--devices', 'desk', '--wait', '0'], { cwd: project });
+      assert.equal(result.status, 0, result.stderr);
+      assert.doesNotMatch(result.stdout + result.stderr, /No such remote|fatal:|error:/);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
     }
   });
 

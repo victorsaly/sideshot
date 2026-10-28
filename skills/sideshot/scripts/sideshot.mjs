@@ -62,7 +62,10 @@ if (args.includes('--help') || args.includes('-h')) {
   process.exit(0);
 }
 
-const git = (args, cwd) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
+// git's own words are kept, not printed: a question with a "no" for an answer (is there an origin?) must not show as
+// an error. When git does fail, what it said is in the error it throws.
+const git = (args, cwd) =>
+  execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 // The project is the git repository the command runs in, not the folder this script ships in.
 let root;
 try {

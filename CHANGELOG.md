@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.1 (2026-10-28)
+
+- In a project with no `origin`, git's own "No such remote 'origin'" no longer shows on every run. git is still
+  asked; only its answer is kept quiet, and when git really fails, what it said is in the error.
+- The README links to a 36-second film of SideShot at work, on skills.victorsaly.com.
+
 ## 0.5.0 (2026-10-28)
 
 ### Quicker
