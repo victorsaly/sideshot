@@ -137,6 +137,13 @@ describe('draw.mjs', () => {
     assert.equal(changed, 1);
   });
 
+  it('rules where one of two like blocks was taken out, though the other still shows the same rows', async () => {
+    const was = { width: 400, height: 140, rects: [[40, 30, 200, 20, '#3355aa'], [40, 70, 200, 20, '#3355aa']] };
+    const now = { width: 400, height: 140, rects: [[40, 70, 200, 20, '#3355aa']] };
+    const { changed } = await marked(was, now);
+    assert.equal(changed, 1);
+  });
+
   it('rules a line where something was taken out', async () => {
     const was = { width: 400, height: 140, rects: [[40, 30, 200, 20, '#cc3300'], [40, 70, 200, 20, '#222222']] };
     const now = { width: 400, height: 140, rects: [[40, 70, 200, 20, '#222222']] };

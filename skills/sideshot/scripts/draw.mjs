@@ -77,25 +77,26 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
       L[i * (m + 1) + j] = same(i, j)
         ? L[(i + 1) * (m + 1) + j + 1] + 1
         : Math.max(L[(i + 1) * (m + 1) + j], L[i * (m + 1) + j + 1]);
-    // What was taken out is ruled only when its rows are nowhere in "after": space that only shrank is not.
+    // A row is content when it carries ink, against the picture's background, across a good part of the width
+    // (5%, more than a card's borders); otherwise it is space: blank page, the empty inside of a card.
+    const isContent = (P, y) => {
+      let inked = 0;
+      for (let k = y * P.w * 4, e = k + P.w * 4; k < e; k += 4)
+        if (Math.abs(P.d[k] - P.d[0]) + Math.abs(P.d[k + 1] - P.d[1]) + Math.abs(P.d[k + 2] - P.d[2]) > 60) inked++;
+      return inked > P.w * 0.05;
+    };
+    // What was taken out is ruled when it was content, even if like rows still show elsewhere (one of two like
+    // blocks), or when its rows are nowhere in "after"; space that only shrank is not.
     const inAfter = new Set(B.hashes);
     const added = new Uint8Array(B.h), cuts = [];
-    const cut = (run, y) => { if (!inAfter.has(run.hash)) cuts.push(y); };
-    // A stretch that lined up but changed height is space that grew or shrank, unless its rows carry ink across
-    // a good part of the width (5%, more than a card's borders): then it is content, a bar or a button, and its
-    // new height is a change.
-    const bg = [B.d[0], B.d[1], B.d[2]];
-    const isContent = (y) => {
-      let inked = 0;
-      for (let k = y * B.w * 4, e = k + B.w * 4; k < e; k += 4)
-        if (Math.abs(B.d[k] - bg[0]) + Math.abs(B.d[k + 1] - bg[1]) + Math.abs(B.d[k + 2] - bg[2]) > 60) inked++;
-      return inked > B.w * 0.05;
-    };
+    const cut = (run, y) => { if (isContent(A, run.start) || !inAfter.has(run.hash)) cuts.push(y); };
+    // A stretch that lined up but changed height is space that grew or shrank, unless it is content, a bar or a
+    // button: then its new height is a change.
     let i = 0, j = 0;
     while (i < n && j < m) {
       if (same(i, j)) {
         const was = RA[i].end - RA[i].start, now = RB[j].end - RB[j].start;
-        if (was !== now && isContent(RB[j].start)) {
+        if (was !== now && isContent(B, RB[j].start)) {
           if (now > was) added.fill(1, RB[j].start, RB[j].end);
           else cuts.push(RB[j].end);
         }

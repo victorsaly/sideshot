@@ -32,6 +32,7 @@ SideShot now stops, with a plain message, on input it used to accept or quietly 
 - Space that only grew or shrank, such as the inside of a card made taller by something new, is no longer marked,
   and content that only moved down is no longer boxed with what was added above it.
 - A solid block, a bar or a button, that only got taller is boxed, and one that got shorter is ruled.
+- Something taken out is ruled even when a block just like it is still on the page.
 
 ### For people working on SideShot
 
