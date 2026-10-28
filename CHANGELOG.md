@@ -31,11 +31,16 @@ SideShot now stops, with a plain message, on input it used to accept or quietly 
 - `--mark-changes` boxes what was added close around it, instead of across the card or column it sits in.
 - Space that only grew or shrank, such as the inside of a card made taller by something new, is no longer marked,
   and content that only moved down is no longer boxed with what was added above it.
+- A solid block, a bar or a button, that only got taller is boxed, and one that got shorter is ruled.
 
 ### For people working on SideShot
 
-- Tests: `npm test` (unit), `npm run test:e2e` (pictured in Chromium, and what is drawn on the pictures),
-  `npm run lint`, `npm run typecheck`, and `npm run check` for all of them. CI runs them on every pull request.
+- Tests: `npm test` (unit), `npm run test:e2e` (pictured in Chromium, what is drawn on the pictures, and
+  publishing to a repository made in the test), `npm run lint`, `npm run typecheck`, and `npm run check` for all
+  of them. CI runs them on every pull request, on Linux and macOS.
+- CodeQL looks at the code on every pull request and weekly. Actions are pinned to commits, and Dependabot keeps
+  them and the development tools current.
+- [SECURITY.md](SECURITY.md) says how to report a vulnerability privately.
 - What is drawn on the pictures (`draw.mjs`) and what SideShot is asked (`lib.mjs`) are modules of their own.
 
 ## 0.3.1

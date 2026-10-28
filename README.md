@@ -171,7 +171,7 @@ The skill needs nothing installed beyond Playwright in the project it runs in. T
 npm install && npx playwright install chromium
 npm test                # what it is asked, checked, and the table it writes
 npm run test:coverage   # the same, with at least 90% of lib.mjs covered
-npm run test:e2e        # pages pictured for real in Chromium, and what draw.mjs marks on them
+npm run test:e2e        # pictured for real in Chromium, what draw.mjs marks, and publishing to a local repo
 npm run lint            # ESLint
 npm run typecheck       # TypeScript checks the JavaScript, nothing is built
 npm run check           # all of the above, as CI runs it on every pull request

@@ -1,52 +1,18 @@
 // SideShot run for real: a "before" and an "after" page served here, pictured in a browser, without publishing.
 // Needs Playwright and its Chromium (npm i, then npx playwright install chromium).
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
-import { createServer } from 'node:http';
+import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import { fileURLToPath } from 'node:url';
-
-const repo = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const script = join(repo, 'skills/sideshot/scripts/sideshot.mjs');
-
-const pageOf = (card) => `<!doctype html><meta charset="utf-8">
-<style>
-  body { margin: 0; font: 16px system-ui; background: #fff; color: #111; }
-  @media (prefers-color-scheme: dark) { body { background: #111; color: #eee; } }
-  .card { width: 320px; margin: 40px; padding: 24px; border: 1px solid #ccc; border-radius: 12px; }
-  .new { display: inline-block; margin-top: 12px; padding: 4px 10px; background: #0a7; color: #fff; }
-</style>
-<div class="card"><h2>Pro plan</h2><p>Everything in Free, and more.</p>${card}</div>`;
-
-const serve = (html) =>
-  new Promise((ok) => {
-    const server = createServer((_, res) => res.writeHead(200, { 'content-type': 'text/html' }).end(html));
-    server.listen(0, '127.0.0.1', () => ok(server));
-  });
-const addressOf = (server) => `http://127.0.0.1:${String(server.address().port)}`;
-
-// Run apart and awaited, never synchronously: the pages are served from this process, which must stay free to
-// answer.
-const run = (args) =>
-  new Promise((ok, fail) => {
-    const child = spawn(process.execPath, [script, ...args], { cwd: repo, timeout: 120_000 });
-    let stdout = '', stderr = '';
-    child.stdout.on('data', (d) => (stdout += d));
-    child.stderr.on('data', (d) => (stderr += d));
-    child.on('error', fail);
-    child.on('close', (status) => ok({ status, stdout, stderr }));
-  });
-const isPng = (file) => readFileSync(file).subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'));
+import { addressOf, badge, isPng, pageOf, run, serve } from './helpers.mjs';
 
 // Each test has a pull request, so a folder, of its own: they run at once.
 describe('sideshot.mjs', { concurrency: true }, () => {
   let was, now, out;
   before(async () => {
     was = await serve(pageOf(''));
-    now = await serve(pageOf('<span class="new">New: priority support</span>'));
+    now = await serve(pageOf(badge));
     out = mkdtempSync(join(tmpdir(), 'sideshot-e2e-'));
   });
   after(() => {
