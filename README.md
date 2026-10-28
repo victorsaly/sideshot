@@ -87,8 +87,13 @@ Add `--note` and `--mark-changes` and the picture says what changed: a numbered 
 - **Pictures that stay out of your code.** They live on a `sideshot` branch that never merges.
 - **A table that does not pile up.** The description gets one before/after table between markers; running again
   replaces it.
-- **You look first.** Nothing is pushed until you have seen the pictures.
+- **You look first, and what you saw is what goes in.** One overview sheet a part, before beside after, to look
+  over; then `--reuse` publishes those same pictures, not new ones.
+- **Quick.** Pictures are taken four at a time, and each page waits once, not three times: eight pictures in
+  about seven seconds.
 - **Honest about gaps.** A part that is new or removed shows as *(not there)* on one side, and the run says so.
+- **Nothing to compare, said plainly.** A pair the same before and after is left out, and named under the table.
+  When nothing is left, nothing is pushed, and the description says why.
 
 <a id="how-it-works"></a>
 
@@ -110,7 +115,8 @@ Add `--note` and `--mark-changes` and the picture says what changed: a numbered 
 ## Quick start
 
 1. **Install** with `npx skills add victorsaly/sideshot -g` (or the Claude Code plugin above).
-2. **Have Playwright in the project**: `npm i -D playwright && npx playwright install chromium`. Your agent asks
+2. **Have Playwright**: in the project (`npm i -D playwright && npx playwright install chromium`), or, for a
+   project without Node (Python, Ruby, Go, a static site), globally (`npm i -g playwright`). Your agent asks
    before adding it.
 3. **Ask on a branch with a PR**: *"SideShot this PR"*. Add `.sideshot/` to `.gitignore`.
 
@@ -145,8 +151,13 @@ node skills/sideshot/scripts/sideshot.mjs --pr 123 --page /pricing --part plans=
 | `--accent auto` | The marking colour: `auto` (marigold, unless the page is close to it), `magenta`, `cyan`, `violet`, `lime`, or `#hex`. |
 | `--no-watermark` | Leaves off the small SideShot tag in the corner of each "after" picture. |
 | `--setup ./file.mjs` | Runs on each page before it opens: stand-in data, a cookie, a login. |
+| `--wait 1500` | How long a part is given to settle once it is in view, before it is pictured. |
+| `--jobs 4` | How many pictures are taken at once. |
 | `--publish` | Pushes the pictures to the `sideshot` branch and prints the table. |
 | `--update-pr` | Also writes the table into the PR description (needs the GitHub CLI). |
+| `--reuse` | With `--publish` or `--update-pr`: publishes the pictures already taken, as they are. |
+
+`--pr` can be left out when the GitHub CLI finds the branch's pull request. `--help` lists everything.
 
 A `--setup` file, for a page whose data only production can reach:
 

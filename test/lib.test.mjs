@@ -10,12 +10,18 @@ import {
   isPicture,
   label,
   markers,
+  nothingOf,
+  nothingTableOf,
   optionsOf,
   pictureName,
   plainOf,
+  pool,
+  ringsWithin,
+  sheetsOf,
   slugOf,
   swatches,
   tableOf,
+  usage as help,
 } from '../skills/sideshot/scripts/lib.mjs';
 
 // The least SideShot can be asked, and what it is asked on top of that.
@@ -115,6 +121,7 @@ describe('optionsOf', () => {
     assert.equal(o.page, '/');
     assert.equal(o.after, 'http://localhost:3000');
     assert.equal(o.wait, 1500);
+    assert.equal(o.jobs, 4);
     assert.equal(o.branch, 'sideshot');
     assert.equal(o.out, '.sideshot');
     assert.equal(o.accent, 'auto');
@@ -174,6 +181,16 @@ describe('optionsOf', () => {
   it('refuses a wait that is not a whole number of milliseconds', () => {
     for (const wait of ['soon', '-5', '', '1.5']) refused([...base, '--wait', wait], /--wait is in milliseconds/);
   });
+  it('takes how many pictures go at once, from 1 to 16', () => {
+    assert.equal(asked('--jobs', '1').jobs, 1);
+    assert.equal(optionsOf(base, { jobs: 8 }).jobs, 8);
+    for (const jobs of ['0', '17', 'two', '-1']) refused([...base, '--jobs', jobs], /--jobs is how many/);
+  });
+  it('reuses pictures only to publish them', () => {
+    assert.equal(asked('--update-pr', '--reuse').reuse, true);
+    assert.equal(asked('--publish').reuse, false);
+    refused([...base, '--reuse'], /--reuse publishes/);
+  });
   it('refuses a branch git would read as an option', () => {
     refused([...base, '--branch', '--upload-pack=touch /tmp/x'], /Cannot use --branch/);
     refused(base, /Cannot use --branch/, { branch: '-x' });
@@ -224,6 +241,70 @@ describe('picture names', () => {
     assert.ok(!isPicture(plainOf('hero-desk-after.png')));
     assert.ok(!isPicture('table.md'));
   });
+  it('does not take an overview sheet for a picture, so it is never marked or published', () => {
+    assert.ok(!isPicture('hero-overview.png'));
+    assert.ok(!isPicture('hero-overview-2.png'));
+  });
+});
+
+describe('ringsWithin', () => {
+  const ring = (x, y) => ({ n: 1, x, y, w: 40, h: 20 });
+  it('keeps a ring on the picture, even one that only overlaps its edge', () => {
+    assert.equal(ringsWithin([ring(10, 10), ring(-30, 290)], 300, 300).length, 2);
+  });
+  it('drops a note on another part of the page', () => {
+    assert.deepEqual(ringsWithin([ring(10, 400), ring(-50, 10), ring(300, 10)], 300, 300), []);
+  });
+});
+
+describe('pool', () => {
+  it('keeps the order of the items, whatever order they finish in', async () => {
+    const later = (ms, v) => new Promise((ok) => setTimeout(() => ok(v), ms));
+    assert.deepEqual(await pool([30, 0, 10], 3, (ms, i) => later(ms, i)), [0, 1, 2]);
+  });
+  it('runs no more than jobs at once', async () => {
+    let running = 0, most = 0;
+    await pool([1, 2, 3, 4, 5], 2, async () => {
+      most = Math.max(most, ++running);
+      await new Promise((ok) => setTimeout(ok, 5));
+      running--;
+    });
+    assert.equal(most, 2);
+  });
+  it('is done at once with nothing to do', async () => {
+    assert.deepEqual(await pool([], 4, () => 1), []);
+  });
+});
+
+describe('sheetsOf', () => {
+  const o = asked('--devices', 'desk,phone,tablet', '--schemes', 'light,dark');
+  const all = o.chosen.flatMap((d) =>
+    o.schemes.flatMap((s) => ['before', 'after'].map((w) => pictureName('hero', d.name, s, w))));
+  it('puts the pairs of each part four to a sheet', () => {
+    const sheets = sheetsOf({ ...o, files: new Set(all) });
+    assert.deepEqual(sheets.map((s) => s.file), ['hero-overview.png', 'hero-overview-2.png']);
+    assert.deepEqual(sheets.map((s) => s.rows.length), [4, 2]);
+    assert.deepEqual(sheets[0].rows[1], {
+      label: 'hero, desk-dark (1280×900)',
+      before: 'hero-desk-dark-before.png',
+      after: 'hero-desk-dark-after.png',
+    });
+  });
+  it('leaves out a pair with no picture, and an empty side as null', () => {
+    const sheets = sheetsOf({ ...o, files: new Set(['hero-phone-after.png']) });
+    assert.deepEqual(sheets, [
+      { file: 'hero-overview.png', rows: [{ label: 'hero, phone (390×844)', before: null, after: 'hero-phone-after.png' }] },
+    ]);
+  });
+});
+
+describe('usage', () => {
+  it('names every flag optionsOf reads', () => {
+    const read = ['--pr', '--page', '--part', '--click', '--devices', '--schemes', '--before', '--after', '--setup',
+      '--note', '--mark-changes', '--accent', '--no-watermark', '--wait', '--jobs', '--out', '--publish',
+      '--update-pr', '--reuse', '--branch'];
+    for (const flag of read) assert.ok(help.includes(`  ${flag} `), flag);
+  });
 });
 
 describe('tableOf', () => {
@@ -239,6 +320,11 @@ describe('tableOf', () => {
   it('says when one side is not there', () => {
     assert.match(table(['hero-phone-dark-after.png']), /\| \(not there\) \| <img/);
   });
+  it('names the pairs left out for being the same, and only when there are any', () => {
+    const t = table(['hero-desk-after.png'], { same: ['hero on phone', 'hero on phone-dark'] });
+    assert.ok(t.includes('<sub>The same before and after, so not shown: hero on phone, hero on phone-dark.</sub>'), t);
+    assert.doesNotMatch(table(['hero-desk-after.png']), /The same before and after/);
+  });
   it('lists the notes and where before and after came from', () => {
     const t = table(['hero-desk-after.png']);
     assert.match(t, /\*\*What changed\*\*\n\n1\. Bigger button/);
@@ -252,6 +338,34 @@ describe('tableOf', () => {
     });
     assert.ok(t.includes('Before: https://preview.example.com/pricing · After: run locally'), t);
     assert.doesNotMatch(t, /someone|not-a-real/);
+  });
+});
+
+describe('nothing to compare', () => {
+  it('says which pairs were the same and which parts were on neither side', () => {
+    assert.equal(
+      nothingOf({ same: ['card on desk', 'card on phone'], gone: [], page: '/pricing' }),
+      'SideShot found nothing to compare on /pricing: before and after are the same, pixel for pixel, on card on ' +
+        'desk, card on phone.',
+    );
+    assert.match(
+      nothingOf({ same: ['card on desk'], gone: ['badge on desk'], page: '/' }),
+      /pixel for pixel, on card on desk; the part is on neither side on badge on desk\.$/,
+    );
+  });
+  it('names the page without its query', () => {
+    assert.match(nothingOf({ same: [], gone: ['a on desk'], page: '/p?token=secret' }), /on \/p: /);
+  });
+  it('puts that, and where each side came from, where the table would go', () => {
+    const text = nothingTableOf({
+      why: 'SideShot found nothing to compare on /: the part is on neither side on a on desk.',
+      before: loginIn('https://example.com', ['me', 'pw']),
+      after: 'http://localhost:4321',
+      page: '/',
+    });
+    assert.match(text, /^## Before and after\n\nSideShot found nothing to compare on \/: .* so there are no pictures\./);
+    assert.match(text, /Before: https:\/\/example\.com\/ · After: run locally/);
+    assert.ok(!text.includes('pw'));
   });
 });
 

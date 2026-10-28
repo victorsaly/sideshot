@@ -189,3 +189,42 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
   for (let k = 0; k < bytes.length; k += 0x8000) bin += String.fromCharCode(...bytes.subarray(k, k + 0x8000));
   return { png: btoa(bin), changed };
 }
+
+/** Runs in the page: one sheet of pairs, each before beside after, small, with what it is said above it. Made to
+ * be looked over in one go, by a person or an agent, before anything is published; never published itself. */
+export async function sheet({ rows }) {
+  const load = (s) => new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.src = s; });
+  const W = 1400, gap = 16, band = 30, col = (W - 3 * gap) / 2, tallest = 440;
+  const laid = [];
+  for (const r of rows) {
+    const before = r.before ? await load(r.before) : null, after = r.after ? await load(r.after) : null;
+    const shown = [before, after].filter(Boolean);
+    // Both sides at one scale, so a part that grew looks bigger.
+    const s = Math.min(1, col / Math.max(...shown.map((i) => i.width)), tallest / Math.max(...shown.map((i) => i.height)));
+    laid.push({ label: r.label, before, after, s, h: Math.max(...shown.map((i) => i.height)) * s });
+  }
+  const H = gap + laid.reduce((sum, r) => sum + band + r.h + gap, 0);
+  const c = new OffscreenCanvas(W, Math.ceil(H)), x = c.getContext('2d');
+  x.fillStyle = '#e8e8e8'; x.fillRect(0, 0, W, H);
+  let y = gap;
+  for (const r of laid) {
+    x.fillStyle = '#111111'; x.font = '600 17px system-ui, -apple-system, sans-serif'; x.textBaseline = 'middle';
+    x.textAlign = 'left'; x.fillText(r.label, gap, y + band / 2);
+    x.font = '15px system-ui, -apple-system, sans-serif'; x.fillStyle = '#555555';
+    x.textAlign = 'right'; x.fillText('before', gap + col, y + band / 2); x.fillText('after', W - gap, y + band / 2);
+    x.textAlign = 'left';
+    [r.before, r.after].forEach((img, k) => {
+      const left = gap + k * (col + gap), top = y + band;
+      if (!img) { x.fillStyle = '#555555'; x.fillText('(not there)', left + 8, top + 20); return; }
+      const w = img.width * r.s, h = img.height * r.s;
+      x.drawImage(img, left, top, w, h);
+      x.strokeStyle = '#999999'; x.lineWidth = 1; x.strokeRect(left + 0.5, top + 0.5, w - 1, h - 1);
+    });
+    y += band + r.h + gap;
+  }
+  const blob = await c.convertToBlob({ type: 'image/png' });
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let bin = '';
+  for (let k = 0; k < bytes.length; k += 0x8000) bin += String.fromCharCode(...bytes.subarray(k, k + 0x8000));
+  return btoa(bin);
+}

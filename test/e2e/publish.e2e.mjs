@@ -114,6 +114,56 @@ esac
     assert.deepEqual(onBranch(), ['5/plan-desk-after.png', '5/plan-desk-before.png', 'README.md']);
   });
 
+  it('publishes the pictures already taken, as they are, with --reuse', async () => {
+    const taken = sh(project, ['hash-object', join('.sideshot', '5', 'plan-desk-after.png')]);
+    // Nothing answers at either address: had it taken them again, it would have stopped there.
+    const silent = 'http://127.0.0.1:9';
+    const result = await run(
+      ['--pr', '5', '--before', silent, '--after', silent, '--devices', 'desk', '--part', 'plan=.card', '--publish', '--reuse'],
+      { cwd: project, env },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Publishing the 2 pictures already in/);
+    assert.equal(sh(bare, ['rev-parse', 'sideshot:5/plan-desk-after.png']), taken);
+  });
+
+  it('asks for pictures to reuse, and for somewhere to publish them', async () => {
+    const none = await run(['--pr', '6', '--before', 'http://127.0.0.1:9', '--part', 'a=.a', '--publish', '--reuse'], {
+      cwd: project,
+      env,
+    });
+    assert.equal(none.status, 1);
+    assert.match(none.stderr, /no pictures in .* to publish/);
+    const nowhere = await publish(['--part', 'plan=.card', '--reuse']);
+    assert.equal(nowhere.status, 1);
+    assert.match(nowhere.stderr, /--reuse publishes the pictures already taken/);
+  });
+
+  it('says in the description that there was nothing to compare, and why, and pushes nothing', async () => {
+    const pushed = sh(bare, ['rev-parse', 'sideshot']);
+    const same = await run(
+      ['--pr', '7', '--before', addressOf(was), '--after', addressOf(was), '--devices', 'desk', '--wait', '0',
+        '--part', 'card=.card', '--update-pr'],
+      { cwd: project, env },
+    );
+    assert.equal(same.status, 3, same.stderr);
+    assert.match(same.stdout, /Said in the description of #7 that there was nothing to compare, and why\./);
+    const text = readFileSync(body, 'utf8');
+    assert.equal(markers(text), 1);
+    assert.match(text, /<!-- sideshot:start -->\n## Before and after\n\nSideShot found nothing to compare on \/: before and after are the same, pixel for pixel, on card on desk\./);
+    assert.doesNotMatch(text, /<img/);
+    assert.equal(sh(bare, ['rev-parse', 'sideshot']), pushed);
+    // Said again from what the run kept, without taking anything.
+    writeFileSync(body, 'Fixes the pricing card.\n');
+    const silent = 'http://127.0.0.1:9';
+    const again = await run(['--pr', '7', '--before', silent, '--after', silent, '--part', 'card=.card', '--update-pr', '--reuse'], {
+      cwd: project,
+      env,
+    });
+    assert.equal(again.status, 0, again.stderr);
+    assert.match(readFileSync(body, 'utf8'), /SideShot found nothing to compare/);
+  });
+
   it('publishes nowhere but GitHub, and says so before opening anything', async () => {
     const result = await publish(['--part', 'card=.card', '--publish'], process.env);
     assert.equal(result.status, 1);
