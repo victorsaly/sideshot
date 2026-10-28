@@ -1,6 +1,6 @@
 {
   "name": "sideshot",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "See the change, side by side: before-and-after screenshots for every pull request that changes what people see, on desk and phone, light and dark, right in the PR.",
   "author": { "name": "Victor Saly", "url": "https://github.com/victorsaly" },
   "homepage": "https://github.com/victorsaly/sideshot",

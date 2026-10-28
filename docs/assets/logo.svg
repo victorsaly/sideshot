@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80" width="120" height="80" role="img" aria-label="SideShot">
+  <title>SideShot</title>
+  <!-- Before in ink, after in marigold: the same thing, side by side, overlapping where they meet. -->
+  <rect x="8" y="12" width="56" height="56" fill="#000000"/>
+  <rect x="50" y="12" width="56" height="56" fill="#ffc400" style="mix-blend-mode:multiply"/>
+</svg>

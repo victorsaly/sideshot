@@ -1,6 +1,6 @@
 {
   "name": "sideshot",
-  "description": "Sideshot: before-and-after screenshots for pull requests, as an agent skill.",
+  "description": "SideShot: before-and-after screenshots for pull requests, as an agent skill.",
   "owner": { "name": "Victor Saly", "url": "https://github.com/victorsaly" },
   "plugins": [
     {

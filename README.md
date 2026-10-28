@@ -1,16 +1,16 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/lockup-dark.png" />
-    <img src="docs/assets/lockup-light.png" alt="Sideshot: see the change, side by side" width="450" />
+    <img src="docs/assets/lockup-light.png" alt="SideShot: see the change, side by side" width="450" />
   </picture>
 </p>
 <h3 align="center">Before and after, for every pull request that changes what people see.</h3>
 
-<p align="center"><img src="docs/assets/hero.png" alt="Sideshot: the same part of a page before and after a change, on a desk and a phone" width="960" /></p>
+<p align="center"><img src="docs/assets/hero.png" alt="SideShot: the same part of a page before and after a change, on a desk and a phone" width="960" /></p>
 
 <p align="center">Tell your coding agent to <em>sideshot this PR</em>. It works out which page and which parts your change
-touches, pictures them before and after on a desk and a phone (and in dark mode, if colours changed), shows you
-first, then puts the side-by-side table in the pull request. Reviewers see the change instead of imagining it.</p>
+touches, pictures them before and after on a desk and a phone (and in dark mode, if colours changed), rings and
+marks what changed, shows you first, then puts the side-by-side table in the pull request. Reviewers see the change instead of imagining it.</p>
 
 <p align="center">
   <a href="#start"><strong>Get started</strong></a> &nbsp;·&nbsp;
@@ -21,7 +21,7 @@ first, then puts the side-by-side table in the pull request. Reviewers see the c
 
 <p align="center">
   <a href="https://skills.sh"><img src="https://img.shields.io/badge/Agent_Skill-Claude_Code_%C2%B7_Codex_%C2%B7_Cursor_%C2%B7_OpenCode-000000?style=flat-square" alt="An Agent Skill, for Claude Code, Codex, Cursor and OpenCode" /></a>
-  <img src="https://img.shields.io/badge/version-0.2.0-000000?style=flat-square" alt="Version 0.2.0" />
+  <img src="https://img.shields.io/badge/version-0.3.0-000000?style=flat-square" alt="Version 0.3.0" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-000000?style=flat-square" alt="MIT licence" /></a>
 </p>
 
@@ -38,7 +38,7 @@ npx skills add victorsaly/sideshot -g
 Then, on a branch with a pull request:
 
 ```text
-Sideshot this PR: the pricing table changed. Compare it with production, on desk and phone.
+SideShot this PR: the pricing table changed. Compare it with production, on desk and phone.
 ```
 
 Then carry on: *"add dark mode"*, *"also the checkout page"*, *"put it in the PR"*.
@@ -72,6 +72,16 @@ running ([agentic-blog #151](https://github.com/victorsaly/agentic-blog/pull/151
 | [![The part that changed, before and after, on a desk](docs/assets/example-desk.png)](docs/assets/example-desk.png) | [![The same change on a phone](docs/assets/example-phone.png)](docs/assets/example-phone.png) | [![The change in light and dark](docs/assets/example-dark.png)](docs/assets/example-dark.png) |
 | The part that changed, not the whole page, so before and after line up. | The same change where most people read it. | Colour and contrast checked in both themes. |
 
+Add `--note` and `--mark-changes` and the picture says what changed: a numbered ring on what the change is about
+(its words go under the table), a box on everything else that differs, a dashed rule where something went.
+
+<p align="center"><img src="docs/assets/example-marks.png" alt="On a phone, before and after: the after picture rings the merge button with a 1, boxes the changed buttons, and marks with a dashed rule where a paragraph was removed" width="720" /></p>
+
+- **What changed, said on the picture.** A numbered ring around what the change is about, with its words under
+  the table, and an outline on everything else that differs. Content that only moved is left alone.
+- **Your screens, not ours.** Desk and phone by default; tablet, laptop, wide, or any size you name.
+- **A colour that stands out on your page.** Marks are marigold unless your page is marigold too; then SideShot
+  picks the colour your pictures use least.
 - **Pictures that stay out of your code.** They live on a `sideshot` branch that never merges.
 - **A table that does not pile up.** The description gets one before/after table between markers; running again
   replaces it.
@@ -100,12 +110,13 @@ running ([agentic-blog #151](https://github.com/victorsaly/agentic-blog/pull/151
 1. **Install** with `npx skills add victorsaly/sideshot -g` (or the Claude Code plugin above).
 2. **Have Playwright in the project**: `npm i -D playwright && npx playwright install chromium`. Your agent asks
    before adding it.
-3. **Ask on a branch with a PR**: *"Sideshot this PR"*. Add `.sideshot/` to `.gitignore`.
+3. **Ask on a branch with a PR**: *"SideShot this PR"*. Add `.sideshot/` to `.gitignore`.
 
 Optional: save where *before* and *after* live in `.sideshot.json`, so later runs need nothing else:
 
 ```json
-{ "before": "https://example.com", "after": "http://localhost:4321" }
+{ "before": "https://example.com", "after": "http://localhost:4321",
+  "devices": { "web": "desk", "mobile": "phone", "kiosk": "1080x1920" } }
 ```
 
 <a id="options"></a>
@@ -124,9 +135,13 @@ node skills/sideshot/scripts/sideshot.mjs --pr 123 --page /pricing --part plans=
 | `--page /path` | The page to open on both sides. |
 | `--part name=selector` | A part to picture; repeat for more. `--part page=body` for the whole page. |
 | `--before URL` / `--after URL` | Where each side runs. |
-| `--devices desk,phone` | Desk 1280×900 and phone 390×844, at 2x. |
+| `--devices desk,phone` | Where to picture it, at 2x. Names: `desk`/`web` 1280×900, `phone`/`mobile` 390×844, `tablet` 820×1180, `laptop` 1440×900, `wide` 1920×1080. Or sizes: `1024x768`, `pixel=412x915:mobile`. |
 | `--schemes light,dark` | Light, dark, or both. |
 | `--click "selector"` | Something to press first: a tab, a panel, a menu. |
+| `--note "selector=words"` | Rings that element on the after picture with a number; the words go under the table. Repeat. |
+| `--mark-changes` | Outlines what was added or changed; a dashed rule where something was taken out. |
+| `--accent auto` | The marking colour: `auto` (marigold, unless the page is close to it), `magenta`, `cyan`, `violet`, `lime`, or `#hex`. |
+| `--no-watermark` | Leaves off the small SideShot tag in each picture's corner. |
 | `--setup ./file.mjs` | Runs on each page before it opens: stand-in data, a cookie, a login. |
 | `--publish` | Pushes the pictures to the `sideshot` branch and prints the table. |
 | `--update-pr` | Also writes the table into the PR description (needs the GitHub CLI). |
@@ -143,7 +158,7 @@ export default async (page, { when, device, scheme }) => {
 
 ## Where it comes from
 
-Sideshot grew out of [agentic-blog](https://github.com/victorsaly/agentic-blog), where every pull request that
+SideShot grew out of [agentic-blog](https://github.com/victorsaly/agentic-blog), where every pull request that
 changes a page carries its before and after; it has been taking those pictures there since
 [#111](https://github.com/victorsaly/agentic-blog/pull/111), and became its own tool in October 2026.
 
