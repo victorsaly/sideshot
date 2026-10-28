@@ -33,6 +33,7 @@ import {
   UsageError,
   bodyWith,
   configOf,
+  bareOf,
   isPicture,
   label,
   nothingOf,
@@ -42,7 +43,9 @@ import {
   plainOf,
   pool,
   ringsWithin,
+  runKeyOf,
   sheetsOf,
+  shownOf,
   slugOf,
   swatches,
   tableOf,
@@ -68,18 +71,26 @@ try {
 
 // What was asked, checked before anything opens: a mistake is said plainly, and nothing is half done.
 let options;
+// The GitHub repository is origin's, and every gh call names it: gh alone may pick another (GH_REPO, its default),
+// and a pull request there of the same number would be the one read and written.
 let slug = null;
+try {
+  slug = slugOf(git(['remote', 'get-url', 'origin'], root));
+} catch {
+  // No origin: nothing is published, and the pull request is given.
+}
 try {
   const configFile = join(root, '.sideshot.json');
   const config = existsSync(configFile) ? configOf(readFileSync(configFile, 'utf8')) : {};
   // The pull request, when it is not given, is the one gh finds for this branch: one step fewer every run.
-  if (!args.includes('--pr') && config.pr === undefined) {
+  if (!args.includes('--pr') && config.pr === undefined && slug !== null) {
     try {
-      const found = execFileSync('gh', ['pr', 'view', '--json', 'number', '--jq', '.number'], {
-        cwd: root,
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-      }).trim();
+      const head = git(['rev-parse', '--abbrev-ref', 'HEAD'], root);
+      const found = execFileSync(
+        'gh',
+        ['pr', 'list', '--repo', slug, '--head', head, '--state', 'open', '--json', 'number', '--jq', '.[0].number'],
+        { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+      ).trim();
       if (/^\d+$/.test(found)) {
         args.push('--pr', found);
         console.info(`For #${found}, this branch's pull request.`);
@@ -90,13 +101,6 @@ try {
   }
   options = optionsOf(args, config);
   if (options.publish) {
-    let remote = '';
-    try {
-      remote = git(['remote', 'get-url', 'origin'], root);
-    } catch {
-      // Said below.
-    }
-    slug = slugOf(remote);
     if (slug === null)
       throw new UsageError('--publish and --update-pr need an origin on GitHub, where the pictures are kept.');
     try {
@@ -115,12 +119,15 @@ const {
   markChanges, watermark, publish, updatePr, reuse,
 } = options;
 const out = resolve(root, options.out, pr);
+// What each run found (pairs left out as the same, or nothing to compare at all), kept beside the pictures by what
+// the run was asked, so a run for one page never stands for another's.
+const runFile = join(out, 'run.json');
+const runKey = runKeyOf(options);
+const runs = existsSync(runFile) ? JSON.parse(readFileSync(runFile, 'utf8')) : {};
 
-// The pictures that were looked over are the ones published: nothing is taken again, so nothing can differ. What
-// the run that took them found (pairs left out as the same, or nothing to compare at all) is kept beside them.
+// The pictures that were looked over are the ones published: nothing is taken again, so nothing can differ.
 if (reuse) {
-  const runFile = join(out, 'run.json');
-  const found = existsSync(runFile) ? JSON.parse(readFileSync(runFile, 'utf8')) : { same: [], nothing: null };
+  const found = runs[runKey] ?? { same: [], nothing: null };
   const taken = existsSync(out) ? readdirSync(out).filter(isPicture) : [];
   if (taken.length === 0 && found.nothing === null) {
     console.error(`There are no pictures in ${out} to publish: take them first, without --reuse.`);
@@ -133,7 +140,8 @@ if (reuse) {
 }
 
 // Both sides are asked for the page before a browser opens: a server that was not started is said in a line,
-// not in a browser's stack after a wait. Any answer will do, even a 404 or a login page.
+// not in a browser's stack after a wait. Any answer will do, even a 404 or a login page, so the address is asked
+// without its login; and it is said without one, or a token, since what is printed is read in logs.
 const silent = (
   await Promise.all(
     [
@@ -141,11 +149,14 @@ const silent = (
       ['--after', after],
     ].map(async ([flag, base]) => {
       try {
-        const answer = await fetch(`${base}${page}`, { redirect: 'manual', signal: AbortSignal.timeout(15_000) });
+        const answer = await fetch(bareOf(`${base}${page}`), {
+          redirect: 'manual',
+          signal: AbortSignal.timeout(15_000),
+        });
         await answer.body?.cancel();
         return null;
       } catch {
-        return `${base} (${flag})`;
+        return `${shownOf(base)} (${flag})`;
       }
     }),
   )
@@ -199,6 +210,9 @@ const setup = setupPath
  * picture, in CSS pixels, or null when the page has no such part. */
 async function picture(p, selector, file, noted = [], margin = 0) {
   const part = p.locator(selector).first();
+  // A part drawn late (once its data comes, or once something is pressed) is given up to --wait to appear before
+  // it is said to be missing.
+  await part.waitFor({ state: 'attached', timeout: Math.max(wait, 1000) }).catch(() => undefined);
   if ((await part.count()) === 0) return null;
   // Written as text so it runs in the page whatever the project's tooling.
   await p.evaluate(`(() => {
@@ -234,12 +248,12 @@ async function picture(p, selector, file, noted = [], margin = 0) {
     await part.scrollIntoViewIfNeeded();
     await p.waitForTimeout(600);
   }
-  // Images in the part, loaded (briefly: one that never comes is pictured as it is). A lazy one starts only once
-  // it is in view, which is now.
+  // Images in the part, and the part when it is one, loaded (briefly: one that never comes is pictured as it is).
+  // A lazy one starts only once it is in view, which is now.
   await part.evaluate((el) =>
     Promise.race([
       Promise.all(
-        [...el.querySelectorAll('img')]
+        /** @type {HTMLImageElement[]} */ ([el, ...el.querySelectorAll('img')].filter((i) => i.tagName === 'IMG'))
           .filter((i) => !i.complete)
           .map((i) => new Promise((ok) => {
             i.addEventListener('load', ok);
@@ -317,10 +331,10 @@ async function shoot({ device, scheme, when, base, part }) {
     await p.waitForTimeout(300);
     let pressed = true;
     if (click) {
-      // What is pressed may be new, or gone, so on one side only: that side is pictured as it is, and said.
+      // What is pressed may be new, or gone, so on one side only: that side is pictured as it is, and said. What it
+      // opens is waited for in picture(), with the part's one wait.
       try {
         await p.locator(click).first().click({ timeout: 5000 });
-        await p.waitForTimeout(wait);
       } catch {
         pressed = false;
       }
@@ -381,7 +395,7 @@ for (const part of parts)
 // Only this run's pictures are finished: one kept from an earlier run (another page) was finished then.
 const pngs = taken.filter((t) => t.rings !== null && existsSync(join(out, t.name))).map((t) => t.name);
 const nothing = pngs.length === 0 ? nothingOf({ same, gone, page }) : null;
-writeFileSync(join(out, 'run.json'), `${JSON.stringify({ same, nothing })}\n`);
+writeFileSync(runFile, `${JSON.stringify({ ...runs, [runKey]: { same, nothing } })}\n`);
 for (const f of readdirSync(out)) if (/-overview(?:-\d+)?\.png$/.test(f)) rmSync(join(out, f));
 const missing = taken.filter((t) => t.rings === null).map((t) => t.said);
 const unpressed = taken.filter((t) => !t.pressed).map((t) => t.said);
@@ -521,14 +535,14 @@ function publishing(pngs, { same, nothing }) {
 
   if (updatePr) {
     // The table goes between markers in the description, so running again replaces it instead of adding one.
-    const body = execFileSync('gh', ['pr', 'view', pr, '--json', 'body', '--jq', '.body'], {
+    const body = execFileSync('gh', ['pr', 'view', pr, '--json', 'body', '--jq', '.body', '--repo', slug], {
       cwd: root,
       encoding: 'utf8',
     });
     const next = bodyWith(body, table);
     const file = join(out, 'body.md');
     writeFileSync(file, next);
-    execFileSync('gh', ['pr', 'edit', pr, '--body-file', file], { cwd: root, stdio: 'inherit' });
+    execFileSync('gh', ['pr', 'edit', pr, '--body-file', file, '--repo', slug], { cwd: root, stdio: 'inherit' });
     // The table is in the description, and in table.md: not printed again, where it would only be read again.
     console.info(
       nothing === null

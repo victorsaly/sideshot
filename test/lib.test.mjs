@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   UsageError,
+  bareOf,
   bodyWith,
   configOf,
   deviceOf,
@@ -17,7 +18,9 @@ import {
   plainOf,
   pool,
   ringsWithin,
+  runKeyOf,
   sheetsOf,
+  shownOf,
   slugOf,
   swatches,
   tableOf,
@@ -195,6 +198,9 @@ describe('optionsOf', () => {
     refused([...base, '--branch', '--upload-pack=touch /tmp/x'], /Cannot use --branch/);
     refused(base, /Cannot use --branch/, { branch: '-x' });
   });
+  it('takes a scheme given twice once, so no two pictures share a file', () => {
+    assert.deepEqual(asked('--schemes', 'light,light,dark').schemes, ['light', 'dark']);
+  });
   it('refuses devices and schemes it cannot read', () => {
     refused([...base, '--devices', 'desk,huge'], /Cannot read --devices/);
     refused([...base, '--devices', ','], /Cannot read --devices/);
@@ -244,6 +250,25 @@ describe('picture names', () => {
   it('does not take an overview sheet for a picture, so it is never marked or published', () => {
     assert.ok(!isPicture('hero-overview.png'));
     assert.ok(!isPicture('hero-overview-2.png'));
+  });
+});
+
+describe('addresses', () => {
+  const secret = loginIn('https://preview.example.com/pricing?token=abc', ['me', 'pw']);
+  it('are shown without a login or a token', () => {
+    assert.equal(shownOf(secret), 'https://preview.example.com/pricing');
+  });
+  it('are asked for without a login, and with the rest as given', () => {
+    assert.equal(bareOf(secret), 'https://preview.example.com/pricing?token=abc');
+  });
+});
+
+describe('runKeyOf', () => {
+  it('tells apart runs for two pages of one pull request, and is the same for the same run', () => {
+    const a = asked('--page', '/a');
+    assert.equal(runKeyOf(a), runKeyOf(asked('--page', '/a')));
+    assert.notEqual(runKeyOf(a), runKeyOf(asked('--page', '/b')));
+    assert.notEqual(runKeyOf(a), runKeyOf(asked('--page', '/a', '--schemes', 'dark')));
   });
 });
 

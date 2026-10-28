@@ -96,8 +96,35 @@ describe('sideshot.mjs', { concurrency: true }, () => {
     const result = await run(['--pr', '12', '--before', addressOf(was), '--after', 'http://127.0.0.1:9',
       '--part', 'card=.card', '--out', out]);
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /Nothing answers at http:\/\/127\.0\.0\.1:9 \(--after\)/);
+    assert.match(result.stderr, /Nothing answers at http:\/\/127\.0\.0\.1:9\/ \(--after\)/);
     assert.ok(!existsSync(join(out, '12')));
+  });
+
+  it('asks a server with a login in its address, and never prints the login', async () => {
+    const login = (address) => address.replace('://', '://me:hunter2@');
+    const reached = await run(['--pr', '15', '--before', login(addressOf(was)), '--after', addressOf(now), '--out', out,
+      '--part', 'badge=.new', '--devices', 'desk', '--wait', '0', '--no-watermark']);
+    assert.equal(reached.status, 0, reached.stderr);
+    const silent = await run(['--pr', '15', '--before', login('http://127.0.0.1:9'), '--after', addressOf(now),
+      '--out', out, '--part', 'card=.card']);
+    assert.equal(silent.status, 1);
+    assert.match(silent.stderr, /Nothing answers at http:\/\/127\.0\.0\.1:9\/ \(--before\)/);
+    assert.doesNotMatch(silent.stderr, /hunter2/);
+  });
+
+  it('waits for a part drawn late, rather than calling it missing', async () => {
+    const late = await serve(pageOf('<script>setTimeout(() => document.querySelector(".card").insertAdjacentHTML(' +
+      '"beforeend", \'<span class="new">New: priority support</span>\'), 600);</script>'));
+    try {
+      const result = await run(['--pr', '16', '--before', addressOf(now), '--after', addressOf(late), '--out', out,
+        '--part', 'badge=.new', '--devices', 'desk', '--wait', '0']);
+      assert.equal(result.status, 3, result.stdout);
+      // Found on both sides, and the same: not "on neither side".
+      assert.match(result.stdout, /the same, pixel for pixel, on badge on desk\./);
+      assert.doesNotMatch(result.stdout, /Not on the page/);
+    } finally {
+      late.close();
+    }
   });
 
   it('says every option with --help, anywhere, without a repository', async () => {

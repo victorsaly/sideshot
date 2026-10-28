@@ -185,9 +185,11 @@ export function optionsOf(args, config = {}) {
   const chosen = devicesOf(all('--devices')[0], config.devices);
 
   const schemeSpecs = list('--schemes', 'schemes', ['light']);
-  // A typo among them is said, not dropped: light,drak would otherwise quietly picture light alone.
-  const schemes = schemeSpecs.filter((s) => s === 'light' || s === 'dark');
-  if (schemes.length === 0 || schemes.length < schemeSpecs.length)
+  // A typo among them is said, not dropped: light,drak would otherwise quietly picture light alone. One given
+  // twice is taken once, or two pictures would be taken into one file.
+  const known = schemeSpecs.filter((s) => s === 'light' || s === 'dark');
+  const schemes = [...new Set(known)];
+  if (schemes.length === 0 || known.length < schemeSpecs.length)
     throw new UsageError(`Cannot read --schemes ${schemeSpecs.join(',')}. Use light, dark, or light,dark.`);
 
   const waitText = one('--wait', 'wait', '1500');
@@ -340,14 +342,33 @@ Defaults can live in .sideshot.json at the project's root, under the same names 
 "watermark": false), so later runs need only --part:
   { "before": "https://example.com", "after": "http://localhost:4321", "devices": ["desk", "phone"] }`;
 
-/** Where each side came from, without what else an address can carry: a login before the host, a token in the
- * query. The description is read by everyone who can see the pull request. */
+/** An address as it may be shown, in a description or a log: without what else it can carry, a login before the
+ * host or a token in the query. */
+export const shownOf = (address) => {
+  const where = new URL(address);
+  return `${where.origin}${where.pathname}`;
+};
+
+/** An address without its login, for a request that only asks whether a server answers: fetch refuses an address
+ * with one, and any answer (a 401 too) will do. */
+export const bareOf = (address) => {
+  const where = new URL(address);
+  where.username = '';
+  where.password = '';
+  return where.href;
+};
+
+/** What a run is known by, beside its pictures: its page, parts, devices and schemes. Two runs for one pull request
+ * (two pages) each keep what they found, and --reuse finds the one it repeats. */
+export const runKeyOf = ({ page, parts, chosen, schemes }) =>
+  JSON.stringify([page, parts.map((p) => `${p.name}=${p.selector}`), chosen.map((d) => d.name), schemes]);
+
+/** Where each side came from, shown without a login or a token: the description is read by everyone who can see
+ * the pull request. */
 function sourcesOf(before, after, page) {
   const named = (base) => {
     const where = new URL(`${base}${page}`);
-    return ['localhost', '127.0.0.1', '[::1]'].includes(where.hostname)
-      ? 'run locally'
-      : `${where.origin}${where.pathname}`;
+    return ['localhost', '127.0.0.1', '[::1]'].includes(where.hostname) ? 'run locally' : shownOf(where.href);
   };
   return `<sub>Before: ${named(before)} · After: ${named(after)} · made with [SideShot](https://github.com/victorsaly/sideshot)</sub>`;
 }

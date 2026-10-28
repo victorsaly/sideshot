@@ -35,6 +35,9 @@
 ### Fixed
 
 - A note is ringed only on the part it is in, not on every part's picture.
+- Every GitHub CLI call names origin's repository (`--repo`), so `GH_REPO` or gh's own default can never point
+  it at a pull request of the same number elsewhere.
+- An address with a login is reached, and a login or token in an address is never printed.
 - A second run for another page no longer draws again on the first page's pictures (a second tag, marks around
   the marks): only the pictures a run takes are finished.
 - A `--click` on something only one side has (a new button) no longer stops the run after 30 seconds: that

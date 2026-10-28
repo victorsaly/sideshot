@@ -92,7 +92,11 @@ esac
     assert.match(text, /^Fixes the pricing card\.\n\n<!-- sideshot:start -->/);
     const link = 'https://raw.githubusercontent.com/test-owner/test-repo/sideshot/5/card-desk-after.png';
     assert.ok(text.includes(`<img src="${link}"`), text);
-    assert.match(readFileSync(calls, 'utf8'), /^pr view 5 --json body --jq \.body\npr edit 5 --body-file .*body\.md\n$/);
+    // Bound to origin's repository, whatever gh would pick by itself.
+    assert.match(
+      readFileSync(calls, 'utf8'),
+      /^pr view 5 --json body --jq \.body --repo test-owner\/test-repo\npr edit 5 --body-file .*body\.md --repo test-owner\/test-repo\n$/,
+    );
     // The checkout it used to commit is gone again.
     assert.equal(sh(project, ['worktree', 'list']).split('\n').length, 1);
   });
@@ -156,12 +160,24 @@ esac
     // Said again from what the run kept, without taking anything.
     writeFileSync(body, 'Fixes the pricing card.\n');
     const silent = 'http://127.0.0.1:9';
-    const again = await run(['--pr', '7', '--before', silent, '--after', silent, '--part', 'card=.card', '--update-pr', '--reuse'], {
+    const again = await run(['--pr', '7', '--before', silent, '--after', silent, '--devices', 'desk', '--part', 'card=.card', '--update-pr', '--reuse'], {
       cwd: project,
       env,
     });
     assert.equal(again.status, 0, again.stderr);
     assert.match(readFileSync(body, 'utf8'), /SideShot found nothing to compare/);
+    // What a run for another page found stands for that page alone: --reuse for this one still publishes its pictures.
+    const plan = await run(
+      ['--pr', '7', '--before', addressOf(was), '--after', addressOf(now), '--devices', 'desk', '--wait', '0',
+        '--part', 'plan=.card'],
+      { cwd: project, env },
+    );
+    assert.equal(plan.status, 0, plan.stderr);
+    const reused = await run(['--pr', '7', '--before', silent, '--after', silent, '--devices', 'desk',
+      '--part', 'plan=.card', '--update-pr', '--reuse'], { cwd: project, env });
+    assert.equal(reused.status, 0, reused.stderr);
+    assert.match(reused.stdout, /Publishing the 2 pictures already in/);
+    assert.match(readFileSync(body, 'utf8'), /<img src=".*\/7\/plan-desk-after\.png"/);
   });
 
   it('publishes nowhere but GitHub, and says so before opening anything', async () => {
