@@ -123,7 +123,13 @@ const out = resolve(root, options.out, pr);
 // the run was asked, so a run for one page never stands for another's.
 const runFile = join(out, 'run.json');
 const runKey = runKeyOf(options);
-const runs = existsSync(runFile) ? JSON.parse(readFileSync(runFile, 'utf8')) : {};
+// Read as it is, not checked first: there is no moment between a check and the read for it to change in.
+let runs = {};
+try {
+  runs = JSON.parse(readFileSync(runFile, 'utf8'));
+} catch {
+  // None kept yet, or not readable: each run says again what it found.
+}
 
 // The pictures that were looked over are the ones published: nothing is taken again, so nothing can differ.
 if (reuse) {
