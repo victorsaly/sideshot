@@ -31,7 +31,8 @@ agents.
 2. **`npm run check` passes** before you push.
 3. **The skill, when you change what it says.** A change to `SKILL.md` or `reference.md` is a change to how
    agents behave, so run the evals (`claude plugin eval .`, Claude Code 2.1.269 or later): they run real sessions
-   on your own plan, so CI does not. Add a case under `evals/` for a new behaviour.
+   on your own plan, so CI does not. Add a case under `evals/` for a new behaviour; [evals/README.md](evals/README.md)
+   says what each case checks, how to run one cheaply, and how to add one.
 4. **Pictures, when it changes what SideShot draws or publishes.** Run SideShot on its own pull request.
 5. **A version, in the same pull request** (below).
 

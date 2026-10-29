@@ -10,9 +10,11 @@ For coding agents changing this repository. People: [CONTRIBUTING.md](CONTRIBUTI
 - `skills/sideshot/scripts/lib.mjs`: everything that can be worked out without a browser or git: reading the
   options, `--help`'s words, the table, what to prune. Pure functions, at least 90% covered by `test/lib.test.mjs`.
 - `skills/sideshot/scripts/draw.mjs`: handed to the page as source and run there, so browser globals, not Node's.
+- `test/skill.test.mjs`: the skill's own files as an agent reads them (SKILL.md's limits, its links), the eval cases
+  as the runner reads them, the install lines in the docs, and one version everywhere.
 - `test/e2e/`: pictured for real in Chromium, and publishing to a local bare repository, never to GitHub.
 - `evals/`: whether agents use the skill as SKILL.md says, run with `claude plugin eval .`. Not in CI: each run is
-  a real session, paid for.
+  a real session, paid for. What each case checks, and how to add one: [evals/README.md](evals/README.md).
 
 ## Before you push
 
