@@ -9,7 +9,8 @@
 - **Three more evals**: two near misses SideShot stays out of (an API change that shows nothing on screen, and one
   screenshot for the docs) and one ask with no word for pictures it must still take. Seven cases now.
 - **The README says the problem first** (*A diff cannot show a UI change*), what a reviewer is spared, and, as a
-  diff, screenshots by hand beside SideShot. The same words are on skills.victorsaly.com/sideshot.
+  diff, screenshots by hand beside SideShot. SideShot's page on skills.victorsaly.com says the same
+  (victorsaly/skills#2).
 
 ## 0.5.4 (2026-10-29)
 
