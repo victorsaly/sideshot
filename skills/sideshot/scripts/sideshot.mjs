@@ -126,7 +126,15 @@ function prune({ branch, olderThan }, repo) {
   const tree = execFileSync('git', ['mktree', '-z'], { cwd: root, input: kept.map((e) => `${e}\0`).join(''), encoding: 'utf8' }).trim();
   const said = `#${gone.join(', #')}`;
   const commit = git(['commit-tree', tree, '-m', `chore: prune the pictures of ${said}`], root);
-  git(['push', '-q', `--force-with-lease=refs/heads/${branch}:${tip}`, 'origin', `${commit}:refs/heads/${branch}`], root);
+  try {
+    git(['push', '-q', `--force-with-lease=refs/heads/${branch}:${tip}`, 'origin', `${commit}:refs/heads/${branch}`], root);
+  } catch (error) {
+    console.error(
+      `git could not push the pruned ${branch} to origin:\n  ${refusal(error)}\n` +
+        `Nothing was taken off. If someone pushed to ${branch} since it was read, run it again.`,
+    );
+    process.exit(1);
+  }
   console.info(`Took the pictures of ${said} off ${branch}. Those pull requests no longer show them.`);
 }
 
@@ -178,6 +186,28 @@ try {
   console.error(error.message);
   process.exit(1);
 }
+// gh, there and signed in, before anything that needs it (the description, or the pull requests to prune): said
+// now, plainly, not as gh's own error halfway through, with the pictures pushed and no table.
+if (pruning || options.updatePr) {
+  const forWhat = pruning ? '--prune' : '--update-pr';
+  try {
+    execFileSync('gh', ['auth', 'status', '--hostname', 'github.com'], { stdio: 'ignore' });
+  } catch (error) {
+    console.error(
+      error.code === 'ENOENT'
+        ? `${forWhat} needs the GitHub CLI: install it (https://cli.github.com), then sign in with gh auth login.`
+        : `${forWhat} needs the GitHub CLI signed in: gh auth login, then gh auth status to check.`,
+    );
+    process.exit(2);
+  }
+}
+/** What git said when a push was refused, without its own hints and addresses, for the one sentence that says so. */
+const refusal = (error) =>
+  String(error.stderr ?? error.message)
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '' && !line.startsWith('To ') && !line.startsWith('hint:'))
+    .join('\n  ');
 // Pruning needs no browser.
 if (pruning) {
   prune(pruning, slug);
@@ -599,6 +629,8 @@ if (publish) publishing(readdirSync(out).filter(isPicture), { same, nothing: nul
  * nothing to compare, nothing is pushed, and the description says so, and why. */
 function publishing(pictures, { same, nothing }) {
   if (nothing === null) {
+    // A refused push is said once the checkout is gone, so none is left behind, and before any table is written.
+    let refused = null;
     // Kept on their own branch: a temporary checkout of it, the pictures copied in, one commit, pushed.
     const place = mkdtempSync(join(tmpdir(), 'sideshot-'));
     rmSync(place, { recursive: true });
@@ -621,10 +653,21 @@ function publishing(pictures, { same, nothing }) {
       git(['add', '-A'], place);
       if (git(['status', '--porcelain'], place) !== '') {
         git(['commit', '-m', `chore: before and after for #${pr}`], place);
-        git(['push', 'origin', branch], place);
+        try {
+          git(['push', 'origin', branch], place);
+        } catch (error) {
+          refused = refusal(error);
+        }
       }
     } finally {
       git(['worktree', 'remove', '--force', place], root);
+    }
+    if (refused !== null) {
+      console.error(
+        `git could not push the pictures to ${branch} on origin:\n  ${refused}\n` +
+          `Check that you can push to the repository, then run again with --reuse. They are still in ${out}.`,
+      );
+      process.exit(1);
     }
   }
 

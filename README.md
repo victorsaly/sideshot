@@ -128,8 +128,9 @@ Add `--note` and `--mark-changes` and the picture says what changed: a numbered 
   (the picture branch; `--branch` names another). It never merges, so your code stays as it was.
 - **With `--update-pr`**: the table, between markers in the pull request's description. Running again replaces it.
 
-Anyone who can read the repository can see the pictures, so **on a public repository they are public**, and they
-stay on the `sideshot` branch until `--prune` takes them off. Picture nothing you would not put in the pull request
+Anyone who can read the repository can see the pictures, so **on a public repository they are public**; on a private
+one, only those who can read it see them, in the table as well. They stay on the `sideshot` branch until `--prune`
+takes them off. Picture nothing you would not put in the pull request
 yourself. SideShot sends nothing anywhere else, and costs nothing; your agent's own use is all you pay for.
 
 <a id="how-it-works"></a>
@@ -205,8 +206,8 @@ export default async (page, { when, device, scheme }) => {
 ## When something goes wrong
 
 SideShot says what went wrong, and your agent usually acts on it. It stops with exit 1 for what it was asked (a flag,
-a server that does not answer), 2 for what is missing (Playwright, its browser), and 3 when there is nothing to
-compare. When you are running the script yourself:
+a server that does not answer, a push that is refused), 2 for what is missing (Playwright, its browser, the GitHub CLI),
+and 3 when there is nothing to compare. When you are running the script yourself:
 
 | It says | What to do |
 |---|---|
@@ -221,8 +222,9 @@ compare. When you are running the script yourself:
 | It asks for `--pr` | No pull request for this branch yet, or more than one: open it, or name it with `--pr`. |
 | *SideShot publishes only to an origin on GitHub* | `--publish` and `--update-pr` need the repository on GitHub; the pictures are still in `.sideshot/` without them. |
 | *There are no pictures in … to publish* | `--reuse` publishes pictures already taken, and there are none: run without `--reuse` first. |
-| An error from `gh`, or a push that is refused, while publishing | `gh auth status` should say you are signed in, with a token that can push to the repository and edit its pull requests. |
-| The `--prune` push is refused | Someone pushed to the `sideshot` branch since it was read. Run it again. |
+| *--update-pr needs the GitHub CLI* (exit 2), or *--prune needs* it | Install it from [cli.github.com](https://cli.github.com), or sign in: `gh auth login`, then `gh auth status` to check. Said before anything is pictured or pushed. |
+| *git could not push the pictures to sideshot on origin* | What git said follows. Check that you can push to the repository, then run again with `--reuse`: the pictures are still in `.sideshot/`. |
+| *git could not push the pruned sideshot to origin* | Nothing was taken off. If someone pushed to the `sideshot` branch since it was read, run it again. |
 
 Something else? [Open an issue](https://github.com/victorsaly/sideshot/issues/new/choose) with the command you ran
 and what it said.
