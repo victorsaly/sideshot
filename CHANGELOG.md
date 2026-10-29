@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.5.4 (unreleased)
+
+- **Pictures show in a private repository's pull requests.** The table linked them on `raw.githubusercontent.com`,
+  which answers 404 for a private repository, even to those who can read it. It links them through `github.com` now,
+  which sends a reader on to the picture with their sign-in; on a public repository it ends at the same picture as
+  before. The branch is named in full (`refs/heads/`), so a `--branch` with a slash in it works too.
+- **The GitHub CLI, missing or not signed in, is said before anything is pictured** (exit 2), for `--update-pr` and
+  `--prune`, in place of gh's own error once the pictures were pushed and no table was written.
+- **A refused push is said in a sentence**, with what git said, in place of a stack trace. The checkout is gone
+  and the pictures are kept, for `--reuse`; a prune that is refused takes nothing off.
+- **An icon for the plugin**, SideShot's mark (`docs/assets/mark.png`).
+
+Measured against Anthropic's checklist for skills and the most-starred skill repositories:
+
+- **Evals.** Four cases under `evals/`, run with `claude plugin eval .`. They check that an agent asked in plain words
+  pictures the part that changed, on desk and phone, and looks before it publishes; adds dark mode when colours
+  changed; says what pruning takes away and asks first; and leaves SideShot alone for a change nobody can see. Each
+  is judged on the decision, with SideShot and without it, so the difference is what the skill adds; SideShot's own
+  command is checked too. With it, all four pass every run; without it, three do not (`evals/README.md`).
+- **`npm test` checks the skill's own files.** SKILL.md's name, description, length and size, that its links are
+  there and go one step deep, that the eval cases are ones the runner takes and judge fairly, that every install line
+  in the docs adds Chromium, and that `plugin.json`, SKILL.md, the README badge and the newest changelog entry give
+  the same version.
+- **SKILL.md says its version**, so an install with `npx skills add` can tell which one it is.
+- **What each wait is for.** The timings in `sideshot.mjs` are named in one place, `waits`, each with why it is that
+  long. They have not changed.
+- **A clearer README.** What it needs up front, one place to install, what a part is, what it writes to your
+  repository and who can see it, every option with what it is unless said, and *When something goes wrong*: what
+  each message means and what to do. `reference.md` says which options `.sideshot.json` takes, exactly.
+- **For people and agents working on SideShot**: `CONTRIBUTING.md`, `AGENTS.md` (and `CLAUDE.md`, which reads
+  it), issue forms and a pull request checklist.
+
 ## 0.5.3 (2026-10-29)
 
 From a security and code-standards review of 0.5.0:
