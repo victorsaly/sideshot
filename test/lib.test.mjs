@@ -17,9 +17,12 @@ import {
   pictureName,
   plainOf,
   pool,
+  prOfBranch,
   prFoldersOf,
   pruneOptionsOf,
   ringsWithin,
+  runOf,
+  runsOf,
   runKeyOf,
   sheetsOf,
   shownOf,
@@ -484,5 +487,36 @@ describe('prFoldersOf', () => {
       '040000 tree ffff\t12',
     ];
     assert.deepEqual(prFoldersOf(entries), ['5', '12']);
+  });
+});
+
+describe('prOfBranch', () => {
+  const own = (number) => ({ number, isCrossRepository: false });
+  const fork = (number) => ({ number, isCrossRepository: true });
+
+  it('takes the one open pull request whose branch is in this repository', () => {
+    assert.equal(prOfBranch([own(12)]), '12');
+    // A fork's pull request from a branch of the same name (forks often open them from main) is never taken.
+    assert.equal(prOfBranch([fork(40), own(12), fork(41)]), '12');
+  });
+  it('takes none when it would have to guess, so --pr is asked for', () => {
+    for (const listed of [[], [fork(40)], [own(12), own(13)], null, 'x', [{ number: '12; rm', isCrossRepository: false }]])
+      assert.equal(prOfBranch(listed), null, JSON.stringify(listed));
+  });
+});
+
+describe('runsOf and runOf', () => {
+  it('reads what earlier runs kept, and nothing from a file that is not theirs', () => {
+    assert.deepEqual(runsOf('{"k":{"same":["a on desk"],"nothing":null}}'), { k: { same: ['a on desk'], nothing: null } });
+    for (const text of ['', '{nope', 'null', '[]', '"x"', '12']) assert.deepEqual(runsOf(text), {}, text);
+  });
+  it('gives a run what it found, or nothing found when what is kept is not in that shape', () => {
+    const runs = { a: { same: ['x'], nothing: null }, b: { same: [], nothing: 'Nothing to compare.' } };
+    assert.deepEqual(runOf(runs, 'a'), { same: ['x'], nothing: null });
+    assert.deepEqual(runOf(runs, 'b'), { same: [], nothing: 'Nothing to compare.' });
+    const none = { same: [], nothing: null };
+    for (const kept of [undefined, null, 'x', { same: 'x' }, { same: [1] }, { same: [], nothing: 4 }])
+      assert.deepEqual(runOf({ k: kept }, 'k'), none, JSON.stringify(kept));
+    assert.deepEqual(runOf({}, '__proto__'), none);
   });
 });

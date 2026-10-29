@@ -63,6 +63,17 @@ describe('sideshot.mjs', { concurrency: true }, () => {
     assert.ok(!files.includes('badge-desk-after-plain.png'), files.join(', '));
   });
 
+  it('takes a part and a note named in Playwright\'s own selectors, which the page alone cannot read', async () => {
+    const result = await shoot(
+      '11', '--part', "card=.card:has-text('Pro plan')", '--devices', 'desk', '--wait', '0',
+      '--note', ".new:has-text('priority')=The badge", '--no-watermark',
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const files = readdirSync(join(out, '11'));
+    // Ringed, so drawn on: the plain copy shows the note was found by its selector.
+    assert.ok(files.includes('card-desk-after-plain.png'), files.join(', '));
+  });
+
   it('keeps no pair that is the same before and after, and says which', async () => {
     const result = await shoot('13', '--part', 'card=.card', '--part', 'title=h2', '--devices', 'desk,phone', '--wait', '0');
     assert.equal(result.status, 0, result.stderr);

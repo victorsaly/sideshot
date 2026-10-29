@@ -19,7 +19,7 @@ const executable = (file, text) => {
 const markers = (body) => body.split('<!-- sideshot:start -->').length - 1;
 
 describe('publishing', () => {
-  let was, now, place, bare, project, body, calls, prs, env;
+  let was, now, place, bare, project, body, calls, prs, heads, env;
   before(async () => {
     was = await serve(pageOf(''));
     now = await serve(pageOf(badge));
@@ -30,6 +30,7 @@ describe('publishing', () => {
     body = join(place, 'body.md');
     calls = join(place, 'gh-calls.txt');
     prs = join(place, 'prs.json');
+    heads = join(place, 'heads.json');
     for (const dir of [bare, project, bin]) mkdirSync(dir);
 
     sh(bare, ['init', '-q', '--bare', '-b', 'main']);
@@ -64,7 +65,7 @@ echo "$*" >> "${calls}"
 case "$1 $2" in
   "pr view") cat "${body}" ;;
   "pr edit") cp "$5" "${body}" ;;
-  "pr list") cat "${prs}" ;;
+  "pr list") case " $* " in *" --head "*) cat "${heads}" ;; *) cat "${prs}" ;; esac ;;
   *) echo "gh stand-in cannot $*" >&2; exit 1 ;;
 esac
 `,
@@ -252,5 +253,24 @@ esac
       assert.equal(result.status, 1);
       assert.match(result.stderr, /only to an origin on GitHub/);
     }
+  });
+
+  it("finds the branch's own pull request when --pr is left out, and never a fork's of the same branch name", async () => {
+    // A fork's pull request from its own main, listed by gh beside this repository's, as gh matches by name alone.
+    writeFileSync(heads, JSON.stringify([{ number: 40, isCrossRepository: true }, { number: 9, isCrossRepository: false }]));
+    const found = await run(
+      ['--before', addressOf(was), '--after', addressOf(now), '--devices', 'desk', '--wait', '0', '--part', 'card=.card', '--publish'],
+      { cwd: project, env },
+    );
+    assert.equal(found.status, 0, found.stderr);
+    assert.match(found.stdout, /For #9, this branch's pull request\./);
+    assert.ok(onBranch().includes('9/card-desk-after.png'), onBranch().join(', '));
+    assert.ok(!onBranch().some((f) => f.startsWith('40/')));
+
+    // Only the fork's: nothing is taken for it, and the pull request is asked for.
+    writeFileSync(heads, JSON.stringify([{ number: 40, isCrossRepository: true }]));
+    const none = await run(['--before', addressOf(was), '--part', 'card=.card', '--publish'], { cwd: project, env });
+    assert.equal(none.status, 1);
+    assert.match(none.stderr, /Give the pull request/);
   });
 });

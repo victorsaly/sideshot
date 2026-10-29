@@ -413,6 +413,39 @@ export const bareOf = (address) => {
   return where.href;
 };
 
+/** The pull request for this branch, from what gh pr list --head says (number and isCrossRepository): the one
+ * whose branch is in this repository. gh matches the branch's name alone, so a fork's pull request from a branch
+ * of the same name (forks often open them from main) is listed too, and is never taken. None, or more than one,
+ * is null: it would be a guess, so --pr is asked for. */
+export function prOfBranch(listed) {
+  if (!Array.isArray(listed)) return null;
+  const own = listed.filter((p) => p && p.isCrossRepository === false && /^\d+$/.test(String(p.number)));
+  return own.length === 1 ? String(own[0].number) : null;
+}
+
+/** What earlier runs kept in run.json, read: an object of runs, or none at all when the file is not that. */
+export function runsOf(text) {
+  try {
+    const runs = JSON.parse(text);
+    return typeof runs === 'object' && runs !== null && !Array.isArray(runs) ? runs : {};
+  } catch {
+    return {};
+  }
+}
+
+/** What one run found (pairs the same, or why there was nothing to compare), or nothing found when what is kept
+ * for it is not in that shape: it goes into a pull request's description, so only what SideShot itself writes. */
+export function runOf(runs, key) {
+  const kept = Object.hasOwn(runs, key) ? runs[key] : null;
+  const shaped =
+    typeof kept === 'object' &&
+    kept !== null &&
+    Array.isArray(kept.same) &&
+    kept.same.every((s) => typeof s === 'string') &&
+    (kept.nothing === null || typeof kept.nothing === 'string');
+  return shaped ? { same: kept.same, nothing: kept.nothing } : { same: [], nothing: null };
+}
+
 /** What a run is known by, beside its pictures: its page, parts, devices and schemes. Two runs for one pull request
  * (two pages) each keep what they found, and --reuse finds the one it repeats. */
 export const runKeyOf = ({ page, parts, chosen, schemes }) =>

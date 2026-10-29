@@ -12,7 +12,7 @@
 // with the code that reads them, so an agent never has to read this file to run it.
 //
 // Needs Playwright: the project's own, or one installed globally for a project without Node of its own.
-/* global document, scrollX, scrollY -- only in the functions picture() hands to the page, which run there. */
+/* global document, getComputedStyle, scrollX, scrollY -- only in the functions picture() hands to the page, which run there. */
 import { execFileSync } from 'node:child_process';
 import {
   cpSync,
@@ -43,9 +43,12 @@ import {
   plainOf,
   pool,
   prFoldersOf,
+  prOfBranch,
   pruneOptionsOf,
   ringsWithin,
   runKeyOf,
+  runOf,
+  runsOf,
   sheetsOf,
   shownOf,
   slugOf,
@@ -145,21 +148,26 @@ try {
     pruning = pruneOptionsOf(args, config);
     slug = publishingTo(pruning.branch);
   } else {
-    // The pull request, when it is not given, is the one gh finds for this branch: one step fewer every run.
+    // The pull request, when it is not given, is the one gh finds for this branch: one step fewer every run. Only
+    // one from this repository is taken (prOfBranch): gh matches the branch by name alone, forks too.
     if (!args.includes('--pr') && config.pr === undefined && slug !== null) {
       try {
         const head = git(['rev-parse', '--abbrev-ref', 'HEAD'], root);
-        const found = execFileSync(
-          'gh',
-          ['pr', 'list', '--repo', slug, '--head', head, '--state', 'open', '--json', 'number', '--jq', '.[0].number'],
-          { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
-        ).trim();
-        if (/^\d+$/.test(found)) {
+        const found = prOfBranch(
+          JSON.parse(
+            execFileSync(
+              'gh',
+              ['pr', 'list', '--repo', slug, '--head', head, '--state', 'open', '--json', 'number,isCrossRepository'],
+              { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+            ),
+          ),
+        );
+        if (found !== null) {
           args.push('--pr', found);
           console.info(`For #${found}, this branch's pull request.`);
         }
       } catch {
-        // No gh, or no pull request yet: optionsOf asks for one.
+        // No gh, no pull request yet, or more than one: optionsOf asks for one.
       }
     }
     options = optionsOf(args, config);
@@ -187,22 +195,22 @@ const runKey = runKeyOf(options);
 // Read as it is, not checked first: there is no moment between a check and the read for it to change in.
 let runs = {};
 try {
-  runs = JSON.parse(readFileSync(runFile, 'utf8'));
+  runs = runsOf(readFileSync(runFile, 'utf8'));
 } catch {
   // None kept yet, or not readable: each run says again what it found.
 }
 
 // The pictures that were looked over are the ones published: nothing is taken again, so nothing can differ.
 if (reuse) {
-  const found = runs[runKey] ?? { same: [], nothing: null };
-  const taken = existsSync(out) ? readdirSync(out).filter(isPicture) : [];
-  if (taken.length === 0 && found.nothing === null) {
+  const found = runOf(runs, runKey);
+  const kept = existsSync(out) ? readdirSync(out).filter(isPicture) : [];
+  if (kept.length === 0 && found.nothing === null) {
     console.error(`There are no pictures in ${out} to publish: take them first, without --reuse.`);
     process.exit(1);
   }
   if (found.nothing === null)
-    console.info(`Publishing the ${String(taken.length)} pictures already in ${out}, as they are.`);
-  publishing(taken, found);
+    console.info(`Publishing the ${String(kept.length)} pictures already in ${out}, as they are.`);
+  publishing(kept, found);
   process.exit(0);
 }
 
@@ -245,12 +253,12 @@ try {
   try {
     found = require.resolve('playwright');
   } catch {
-    const global = execFileSync('npm', ['root', '-g'], {
+    const globalModules = execFileSync('npm', ['root', '-g'], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
       shell: process.platform === 'win32',
     }).trim();
-    found = require.resolve(join(global, 'playwright'));
+    found = require.resolve(join(globalModules, 'playwright'));
   }
   const playwright = await import(pathToFileURL(found).href);
   // Loaded as CommonJS, its exports may sit under default.
@@ -281,16 +289,15 @@ async function picture(p, selector, file, noted = [], margin = 0) {
   // it is said to be missing.
   await part.waitFor({ state: 'attached', timeout: Math.max(wait, 1000) }).catch(() => undefined);
   if ((await part.count()) === 0) return null;
-  // Written as text so it runs in the page whatever the project's tooling.
-  await p.evaluate(`(() => {
-    const el = document.querySelector(${JSON.stringify(selector)});
-    if (!el) return;
+  // On the element the locator found, not one the page looks up again: a selector of Playwright's own
+  // (:has-text, text=) is not one the page's querySelector can read.
+  await part.evaluate((el) => {
     for (let d = el.closest('details'); d; d = d.parentElement && d.parentElement.closest('details')) d.open = true;
-    if (el.tagName === 'DETAILS') el.open = true;
+    if (el.tagName === 'DETAILS') /** @type {HTMLDetailsElement} */ (el).open = true;
     // A tall part is pictured in strips as the page scrolls; a sticky bar would be stamped across it.
     for (const node of document.querySelectorAll('*'))
-      if (getComputedStyle(node).position === 'sticky') node.style.position = 'static';
-  })()`);
+      if (getComputedStyle(node).position === 'sticky') /** @type {HTMLElement} */ (node).style.position = 'static';
+  });
   await part.scrollIntoViewIfNeeded();
   // The one wait every part is given (--wait), then until what animates has finished (a reveal, a transition;
   // never one that loops) and the part's height holds.
@@ -348,19 +355,17 @@ async function picture(p, selector, file, noted = [], margin = 0) {
   };
   await p.screenshot({ path: file, fullPage: true, clip });
   // The rings are drawn on the picture afterwards, in the one colour chosen for the whole set; here they are
-  // only measured.
-  const rings = await p.evaluate(
-    ({ notes, origin }) =>
-      notes.flatMap((note) => {
-        const el = document.querySelector(note.selector);
-        if (!el) return [];
-        const r = el.getBoundingClientRect();
-        return [
-          { n: note.n, x: r.left + scrollX - origin.x, y: r.top + scrollY - origin.y, w: r.width, h: r.height },
-        ];
-      }),
-    { notes: noted, origin: clip },
-  );
+  // only measured, each found by its own locator, like the part.
+  const rings = [];
+  for (const note of noted) {
+    const target = p.locator(note.selector).first();
+    if ((await target.count()) === 0) continue;
+    const r = await target.evaluate((el) => {
+      const b = el.getBoundingClientRect();
+      return { x: b.left + scrollX, y: b.top + scrollY, w: b.width, h: b.height };
+    });
+    rings.push({ n: note.n, x: r.x - clip.x, y: r.y - clip.y, w: r.w, h: r.h });
+  }
   return ringsWithin(rings, clip.width, clip.height);
 }
 
@@ -562,7 +567,7 @@ if (publish) publishing(readdirSync(out).filter(isPicture), { same, nothing: nul
 
 /** The pictures pushed to their own branch, and the table made of them: printed, or put in the description. With
  * nothing to compare, nothing is pushed, and the description says so, and why. */
-function publishing(pngs, { same, nothing }) {
+function publishing(pictures, { same, nothing }) {
   if (nothing === null) {
     // Kept on their own branch: a temporary checkout of it, the pictures copied in, one commit, pushed.
     const place = mkdtempSync(join(tmpdir(), 'sideshot-'));
@@ -582,7 +587,7 @@ function publishing(pngs, { same, nothing }) {
       // The pull request's folder is replaced, not added to, so a picture taken out locally goes from there too.
       rmSync(join(place, pr), { recursive: true, force: true });
       mkdirSync(join(place, pr), { recursive: true });
-      for (const f of pngs) cpSync(join(out, f), join(place, pr, f));
+      for (const f of pictures) cpSync(join(out, f), join(place, pr, f));
       git(['add', '-A'], place);
       if (git(['status', '--porcelain'], place) !== '') {
         git(['commit', '-m', `chore: before and after for #${pr}`], place);
