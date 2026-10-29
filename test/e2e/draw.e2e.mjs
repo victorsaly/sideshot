@@ -210,6 +210,20 @@ describe('draw.mjs', () => {
     assert.ok(changed >= 1, JSON.stringify(runs));
   });
 
+  it('still marks a block that only got narrower, though what is left of it is where it was', async () => {
+    const was = { width: 400, height: 80, rects: [[40, 30, 200, 20, '#222222']] };
+    const now = { width: 400, height: 80, rects: [[40, 30, 80, 20, '#222222']] };
+    const { changed, runs } = await marked(was, now);
+    assert.ok(changed >= 1, JSON.stringify(runs));
+  });
+
+  it('still rules a block taken out at the bottom when the picture got shorter for it', async () => {
+    const was = { width: 400, height: 140, rects: [[40, 30, 200, 20, '#222222'], [40, 70, 200, 20, '#222222']] };
+    const now = { width: 400, height: 50, rects: [[40, 30, 200, 20, '#222222']] };
+    const { changed, runs } = await marked(was, now);
+    assert.ok(changed >= 1, JSON.stringify(runs));
+  });
+
   it('still boxes a line that moved further than rounding, beside a gutter', async () => {
     // The second line 6 pixels lower: the space above it grew by more than any rounding.
     const { changed, runs } = await marked(lines([0, 0, 0, 0]), lines([0, 6, 0, 0]));

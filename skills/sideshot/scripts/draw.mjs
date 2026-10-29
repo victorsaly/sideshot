@@ -172,7 +172,12 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
           }
         return true;
       };
-      const onlyMoved = (l, t, r, btm, dy) => stillNear(B, A, l, t, r, btm, dy) && stillNear(A, B, l, t + dy, r, btm + dy, -dy);
+      // What is in "after" is looked for where the mark is; what was in "before", across the whole column of those
+      // rows, since what was taken out may lie outside it (a block that only got narrower). A stretch that does
+      // not fit in both pictures is not checked by halves: it is marked.
+      const onlyMoved = (l, t, r, btm, dy) =>
+        t >= 0 && btm <= B.h && t + dy >= 0 && btm + dy <= A.h &&
+        stillNear(B, A, l, t, r, btm, dy) && stillNear(A, B, x0, t + dy, x1, btm + dy, -dy);
       // What was added is boxed around what differs from the unchanged row next to it (above, or below at the
       // top), not from the background: a card's border runs down both, so it does not stretch the box.
       const boxes = [];
@@ -213,7 +218,7 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
         .filter(([y, { runs, shrank }]) => {
           if (shrank) return true;
           const t = Math.min(...runs.map((r) => r.start)), btm = Math.max(...runs.map((r) => r.end));
-          return !onlyMoved(x0, y, x1, Math.min(B.h, y + btm - t), t - y);
+          return !onlyMoved(x0, y, x1, y + btm - t, t - y);
         })
         .map(([y]) => y);
       const inset = Math.min(6, Math.floor(cw / 4));
