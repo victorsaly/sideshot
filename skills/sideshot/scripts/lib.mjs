@@ -413,6 +413,39 @@ export const bareOf = (address) => {
   return where.href;
 };
 
+/** The pull request for this branch, from what gh pr list --head says (number and isCrossRepository): the one
+ * whose branch is in this repository. gh matches the branch's name alone, so a fork's pull request from a branch
+ * of the same name (forks often open them from main) is listed too, and is never taken. None, or more than one,
+ * is null: it would be a guess, so --pr is asked for. */
+export function prOfBranch(listed) {
+  if (!Array.isArray(listed)) return null;
+  const own = listed.filter((p) => p && p.isCrossRepository === false && /^\d+$/.test(String(p.number)));
+  return own.length === 1 ? String(own[0].number) : null;
+}
+
+/** What earlier runs kept in run.json, read: an object of runs, or none at all when the file is not that. */
+export function runsOf(text) {
+  try {
+    const runs = JSON.parse(text);
+    return typeof runs === 'object' && runs !== null && !Array.isArray(runs) ? runs : {};
+  } catch {
+    return {};
+  }
+}
+
+/** What one run found (pairs the same, or why there was nothing to compare), or nothing found when what is kept
+ * for it is not in that shape: it goes into a pull request's description, so only what SideShot itself writes. */
+export function runOf(runs, key) {
+  const kept = Object.hasOwn(runs, key) ? runs[key] : null;
+  const shaped =
+    typeof kept === 'object' &&
+    kept !== null &&
+    Array.isArray(kept.same) &&
+    kept.same.every((s) => typeof s === 'string') &&
+    (kept.nothing === null || typeof kept.nothing === 'string');
+  return shaped ? { same: kept.same, nothing: kept.nothing } : { same: [], nothing: null };
+}
+
 /** What a run is known by, beside its pictures: its page, parts, devices and schemes. Two runs for one pull request
  * (two pages) each keep what they found, and --reuse finds the one it repeats. */
 export const runKeyOf = ({ page, parts, chosen, schemes }) =>
@@ -451,7 +484,10 @@ export const nothingTableOf = ({ why, before, after, page }) =>
 /** The before and after table, in Markdown, for the pictures that were taken (files). Pairs the same before and
  * after were not kept, and are named under it. */
 export function tableOf({ parts, chosen, schemes, notes, files, before, after, page, slug, branch, pr, same = [] }) {
-  const url = (file) => `https://raw.githubusercontent.com/${slug}/${branch}/${pr}/${file}`;
+  // Through github.com, not raw.githubusercontent.com: that answers 404 for a private repository, even to those who
+  // can read it, where github.com sends them on with their sign-in. The branch in full (refs/heads/), so one with a
+  // slash in it is not taken for part of the path.
+  const url = (file) => `https://github.com/${slug}/raw/refs/heads/${branch}/${pr}/${file}`;
   const lines = ['## Before and after', ''];
   for (const part of parts) {
     for (const device of chosen) {

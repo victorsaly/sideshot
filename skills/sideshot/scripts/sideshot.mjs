@@ -12,7 +12,7 @@
 // with the code that reads them, so an agent never has to read this file to run it.
 //
 // Needs Playwright: the project's own, or one installed globally for a project without Node of its own.
-/* global document, scrollX, scrollY -- only in the functions picture() hands to the page, which run there. */
+/* global document, getComputedStyle, scrollX, scrollY -- only in the functions picture() hands to the page, which run there. */
 import { execFileSync } from 'node:child_process';
 import {
   cpSync,
@@ -43,9 +43,12 @@ import {
   plainOf,
   pool,
   prFoldersOf,
+  prOfBranch,
   pruneOptionsOf,
   ringsWithin,
   runKeyOf,
+  runOf,
+  runsOf,
   sheetsOf,
   shownOf,
   slugOf,
@@ -123,7 +126,15 @@ function prune({ branch, olderThan }, repo) {
   const tree = execFileSync('git', ['mktree', '-z'], { cwd: root, input: kept.map((e) => `${e}\0`).join(''), encoding: 'utf8' }).trim();
   const said = `#${gone.join(', #')}`;
   const commit = git(['commit-tree', tree, '-m', `chore: prune the pictures of ${said}`], root);
-  git(['push', '-q', `--force-with-lease=refs/heads/${branch}:${tip}`, 'origin', `${commit}:refs/heads/${branch}`], root);
+  try {
+    git(['push', '-q', `--force-with-lease=refs/heads/${branch}:${tip}`, 'origin', `${commit}:refs/heads/${branch}`], root);
+  } catch (error) {
+    console.error(
+      `git could not push the pruned ${branch} to origin:\n  ${refusal(error)}\n` +
+        `Nothing was taken off. If someone pushed to ${branch} since it was read, run it again.`,
+    );
+    process.exit(1);
+  }
   console.info(`Took the pictures of ${said} off ${branch}. Those pull requests no longer show them.`);
 }
 
@@ -145,21 +156,26 @@ try {
     pruning = pruneOptionsOf(args, config);
     slug = publishingTo(pruning.branch);
   } else {
-    // The pull request, when it is not given, is the one gh finds for this branch: one step fewer every run.
+    // The pull request, when it is not given, is the one gh finds for this branch: one step fewer every run. Only
+    // one from this repository is taken (prOfBranch): gh matches the branch by name alone, forks too.
     if (!args.includes('--pr') && config.pr === undefined && slug !== null) {
       try {
         const head = git(['rev-parse', '--abbrev-ref', 'HEAD'], root);
-        const found = execFileSync(
-          'gh',
-          ['pr', 'list', '--repo', slug, '--head', head, '--state', 'open', '--json', 'number', '--jq', '.[0].number'],
-          { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
-        ).trim();
-        if (/^\d+$/.test(found)) {
+        const found = prOfBranch(
+          JSON.parse(
+            execFileSync(
+              'gh',
+              ['pr', 'list', '--repo', slug, '--head', head, '--state', 'open', '--json', 'number,isCrossRepository'],
+              { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+            ),
+          ),
+        );
+        if (found !== null) {
           args.push('--pr', found);
           console.info(`For #${found}, this branch's pull request.`);
         }
       } catch {
-        // No gh, or no pull request yet: optionsOf asks for one.
+        // No gh, no pull request yet, or more than one: optionsOf asks for one.
       }
     }
     options = optionsOf(args, config);
@@ -170,6 +186,28 @@ try {
   console.error(error.message);
   process.exit(1);
 }
+// gh, there and signed in, before anything that needs it (the description, or the pull requests to prune): said
+// now, plainly, not as gh's own error halfway through, with the pictures pushed and no table.
+if (pruning || options.updatePr) {
+  const forWhat = pruning ? '--prune' : '--update-pr';
+  try {
+    execFileSync('gh', ['auth', 'status', '--hostname', 'github.com'], { stdio: 'ignore' });
+  } catch (error) {
+    console.error(
+      error.code === 'ENOENT'
+        ? `${forWhat} needs the GitHub CLI: install it (https://cli.github.com), then sign in with gh auth login.`
+        : `${forWhat} needs the GitHub CLI signed in: gh auth login, then gh auth status to check.`,
+    );
+    process.exit(2);
+  }
+}
+/** What git said when a push was refused, without its own hints and addresses, for the one sentence that says so. */
+const refusal = (error) =>
+  String(error.stderr ?? error.message)
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '' && !line.startsWith('To ') && !line.startsWith('hint:'))
+    .join('\n  ');
 // Pruning needs no browser.
 if (pruning) {
   prune(pruning, slug);
@@ -187,22 +225,22 @@ const runKey = runKeyOf(options);
 // Read as it is, not checked first: there is no moment between a check and the read for it to change in.
 let runs = {};
 try {
-  runs = JSON.parse(readFileSync(runFile, 'utf8'));
+  runs = runsOf(readFileSync(runFile, 'utf8'));
 } catch {
   // None kept yet, or not readable: each run says again what it found.
 }
 
 // The pictures that were looked over are the ones published: nothing is taken again, so nothing can differ.
 if (reuse) {
-  const found = runs[runKey] ?? { same: [], nothing: null };
-  const taken = existsSync(out) ? readdirSync(out).filter(isPicture) : [];
-  if (taken.length === 0 && found.nothing === null) {
+  const found = runOf(runs, runKey);
+  const kept = existsSync(out) ? readdirSync(out).filter(isPicture) : [];
+  if (kept.length === 0 && found.nothing === null) {
     console.error(`There are no pictures in ${out} to publish: take them first, without --reuse.`);
     process.exit(1);
   }
   if (found.nothing === null)
-    console.info(`Publishing the ${String(taken.length)} pictures already in ${out}, as they are.`);
-  publishing(taken, found);
+    console.info(`Publishing the ${String(kept.length)} pictures already in ${out}, as they are.`);
+  publishing(kept, found);
   process.exit(0);
 }
 
@@ -245,12 +283,12 @@ try {
   try {
     found = require.resolve('playwright');
   } catch {
-    const global = execFileSync('npm', ['root', '-g'], {
+    const globalModules = execFileSync('npm', ['root', '-g'], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
       shell: process.platform === 'win32',
     }).trim();
-    found = require.resolve(join(global, 'playwright'));
+    found = require.resolve(join(globalModules, 'playwright'));
   }
   const playwright = await import(pathToFileURL(found).href);
   // Loaded as CommonJS, its exports may sit under default.
@@ -273,24 +311,52 @@ const setup = setupPath
       .default
   : null;
 
+// How long a page is waited for, in milliseconds. All but `step` are the most it is given: a page ready sooner is
+// pictured sooner, and one never ready is pictured as it is, so a longer wait only slows the pages that never settle.
+const waits = {
+  // A part drawn by the server is there at once; one drawn by script, a moment later. --wait can be longer.
+  appear: 1000,
+  // A reveal or a transition: a few hundred milliseconds, rarely a second. One longer is pictured where it is.
+  animations: 3000,
+  // The part's height is read every `step`; it holds once `holds` reads in a row agree (0.6 s), and a part that
+  // never stops growing (a feed, a ticker) is given `reads` of them (9 s) before it is pictured as it is.
+  step: 150,
+  holds: 4,
+  reads: 60,
+  // A window made taller lays out again: a frame or two, and a chart's own transition.
+  resized: 600,
+  // An image that has not come by then is not coming.
+  images: 5000,
+  // Lazy content, once scrolled to: most pages go quiet in a second or two, and some poll for ever.
+  quiet: 8000,
+  // Scrolled back to the top, the page's own scroll handlers run (a sticky header, a reveal) before it goes on.
+  scrolledBack: 300,
+  // Something to press that is not there by then is said not to have been pressed.
+  press: 5000,
+};
+// Room below a part taller than the window, so it ends inside it, with what it sits on.
+const below = 80;
+// A ring's number is a disc of radius 15 px, centred 7 px out from what it rings, with a 1 px edge: it reaches
+// 23 px out, and 28 keeps all of it in the picture.
+const ringRoom = 28;
+
 /** Opens what the part sits in, lets it settle, and pictures it. Returns where each noted element sits in the
  * picture, in CSS pixels, or null when the page has no such part. */
 async function picture(p, selector, file, noted = [], margin = 0) {
   const part = p.locator(selector).first();
   // A part drawn late (once its data comes, or once something is pressed) is given up to --wait to appear before
   // it is said to be missing.
-  await part.waitFor({ state: 'attached', timeout: Math.max(wait, 1000) }).catch(() => undefined);
+  await part.waitFor({ state: 'attached', timeout: Math.max(wait, waits.appear) }).catch(() => undefined);
   if ((await part.count()) === 0) return null;
-  // Written as text so it runs in the page whatever the project's tooling.
-  await p.evaluate(`(() => {
-    const el = document.querySelector(${JSON.stringify(selector)});
-    if (!el) return;
+  // On the element the locator found, not one the page looks up again: a selector of Playwright's own
+  // (:has-text, text=) is not one the page's querySelector can read.
+  await part.evaluate((el) => {
     for (let d = el.closest('details'); d; d = d.parentElement && d.parentElement.closest('details')) d.open = true;
-    if (el.tagName === 'DETAILS') el.open = true;
+    if (el.tagName === 'DETAILS') /** @type {HTMLDetailsElement} */ (el).open = true;
     // A tall part is pictured in strips as the page scrolls; a sticky bar would be stamped across it.
     for (const node of document.querySelectorAll('*'))
-      if (getComputedStyle(node).position === 'sticky') node.style.position = 'static';
-  })()`);
+      if (getComputedStyle(node).position === 'sticky') /** @type {HTMLElement} */ (node).style.position = 'static';
+  });
   await part.scrollIntoViewIfNeeded();
   // The one wait every part is given (--wait), then until what animates has finished (a reveal, a transition;
   // never one that loops) and the part's height holds.
@@ -299,25 +365,25 @@ async function picture(p, selector, file, noted = [], margin = 0) {
     Promise.all(document.getAnimations()
       .filter((a) => a.effect && a.effect.getComputedTiming().endTime !== Infinity)
       .map((a) => a.finished.catch(() => undefined))),
-    new Promise((ok) => setTimeout(ok, 3000)),
+    new Promise((ok) => setTimeout(ok, ${waits.animations})),
   ]).then(() => undefined)`);
   let height = -1;
-  for (let steady = 0, tries = 0; steady < 4 && tries < 60; tries++) {
+  for (let steady = 0, tries = 0; steady < waits.holds && tries < waits.reads; tries++) {
     const now = Math.round((await part.boundingBox())?.height ?? 0);
     steady = now === height ? steady + 1 : 0;
     height = now;
-    await p.waitForTimeout(150);
+    await p.waitForTimeout(waits.step);
   }
   // A part taller than the window is pictured beyond it, where a chart can lay out at no height.
   const size = p.viewportSize();
-  if (size && height + 80 > size.height) {
-    await p.setViewportSize({ width: size.width, height: height + 80 });
+  if (size && height + below > size.height) {
+    await p.setViewportSize({ width: size.width, height: height + below });
     await part.scrollIntoViewIfNeeded();
-    await p.waitForTimeout(600);
+    await p.waitForTimeout(waits.resized);
   }
   // Images in the part, and the part when it is one, loaded (briefly: one that never comes is pictured as it is).
-  // A lazy one starts only once it is in view, which is now.
-  await part.evaluate((el) =>
+  // A lazy one starts only once it is in view, which is now. This runs in the page, so the wait is handed to it.
+  await part.evaluate((el, ms) =>
     Promise.race([
       Promise.all(
         /** @type {HTMLImageElement[]} */ ([el, ...el.querySelectorAll('img')].filter((i) => i.tagName === 'IMG'))
@@ -327,8 +393,9 @@ async function picture(p, selector, file, noted = [], margin = 0) {
             i.addEventListener('error', ok);
           })),
       ),
-      new Promise((ok) => setTimeout(ok, 5000)),
+      new Promise((ok) => setTimeout(ok, ms)),
     ]).then(() => undefined),
+    waits.images,
   );
   if (margin === 0) {
     await part.screenshot({ path: file });
@@ -348,19 +415,17 @@ async function picture(p, selector, file, noted = [], margin = 0) {
   };
   await p.screenshot({ path: file, fullPage: true, clip });
   // The rings are drawn on the picture afterwards, in the one colour chosen for the whole set; here they are
-  // only measured.
-  const rings = await p.evaluate(
-    ({ notes, origin }) =>
-      notes.flatMap((note) => {
-        const el = document.querySelector(note.selector);
-        if (!el) return [];
-        const r = el.getBoundingClientRect();
-        return [
-          { n: note.n, x: r.left + scrollX - origin.x, y: r.top + scrollY - origin.y, w: r.width, h: r.height },
-        ];
-      }),
-    { notes: noted, origin: clip },
-  );
+  // only measured, each found by its own locator, like the part.
+  const rings = [];
+  for (const note of noted) {
+    const target = p.locator(note.selector).first();
+    if ((await target.count()) === 0) continue;
+    const r = await target.evaluate((el) => {
+      const b = el.getBoundingClientRect();
+      return { x: b.left + scrollX, y: b.top + scrollY, w: b.width, h: b.height };
+    });
+    rings.push({ n: note.n, x: r.x - clip.x, y: r.y - clip.y, w: r.w, h: r.h });
+  }
   return ringsWithin(rings, clip.width, clip.height);
 }
 
@@ -393,15 +458,15 @@ async function shoot({ device, scheme, when, base, part }) {
     // Down to the end and back once, so what loads lazily has loaded: until the network goes quiet (briefly:
     // some pages poll forever).
     await p.evaluate('window.scrollTo(0, document.body.scrollHeight)');
-    await p.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => undefined);
+    await p.waitForLoadState('networkidle', { timeout: waits.quiet }).catch(() => undefined);
     await p.evaluate('window.scrollTo(0, 0)');
-    await p.waitForTimeout(300);
+    await p.waitForTimeout(waits.scrolledBack);
     let pressed = true;
     if (click) {
       // What is pressed may be new, or gone, so on one side only: that side is pictured as it is, and said. What it
       // opens is waited for in picture(), with the part's one wait.
       try {
-        await p.locator(click).first().click({ timeout: 5000 });
+        await p.locator(click).first().click({ timeout: waits.press });
       } catch {
         pressed = false;
       }
@@ -415,7 +480,7 @@ async function shoot({ device, scheme, when, base, part }) {
       part.selector,
       join(out, name),
       when === 'after' ? notes : [],
-      notes.length > 0 ? 28 : 0,
+      notes.length > 0 ? ringRoom : 0,
     );
     return { name, rings, pressed, said: `${part.name} ${when} on ${label(device.name, scheme)}` };
   } finally {
@@ -562,8 +627,10 @@ if (publish) publishing(readdirSync(out).filter(isPicture), { same, nothing: nul
 
 /** The pictures pushed to their own branch, and the table made of them: printed, or put in the description. With
  * nothing to compare, nothing is pushed, and the description says so, and why. */
-function publishing(pngs, { same, nothing }) {
+function publishing(pictures, { same, nothing }) {
   if (nothing === null) {
+    // A refused push is said once the checkout is gone, so none is left behind, and before any table is written.
+    let refused = null;
     // Kept on their own branch: a temporary checkout of it, the pictures copied in, one commit, pushed.
     const place = mkdtempSync(join(tmpdir(), 'sideshot-'));
     rmSync(place, { recursive: true });
@@ -582,14 +649,25 @@ function publishing(pngs, { same, nothing }) {
       // The pull request's folder is replaced, not added to, so a picture taken out locally goes from there too.
       rmSync(join(place, pr), { recursive: true, force: true });
       mkdirSync(join(place, pr), { recursive: true });
-      for (const f of pngs) cpSync(join(out, f), join(place, pr, f));
+      for (const f of pictures) cpSync(join(out, f), join(place, pr, f));
       git(['add', '-A'], place);
       if (git(['status', '--porcelain'], place) !== '') {
         git(['commit', '-m', `chore: before and after for #${pr}`], place);
-        git(['push', 'origin', branch], place);
+        try {
+          git(['push', 'origin', branch], place);
+        } catch (error) {
+          refused = refusal(error);
+        }
       }
     } finally {
       git(['worktree', 'remove', '--force', place], root);
+    }
+    if (refused !== null) {
+      console.error(
+        `git could not push the pictures to ${branch} on origin:\n  ${refused}\n` +
+          `Check that you can push to the repository, then run again with --reuse. They are still in ${out}.`,
+      );
+      process.exit(1);
     }
   }
 

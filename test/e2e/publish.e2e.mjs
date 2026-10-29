@@ -19,7 +19,7 @@ const executable = (file, text) => {
 const markers = (body) => body.split('<!-- sideshot:start -->').length - 1;
 
 describe('publishing', () => {
-  let was, now, place, bare, project, body, calls, prs, env;
+  let was, now, place, bare, project, body, calls, prs, heads, env;
   before(async () => {
     was = await serve(pageOf(''));
     now = await serve(pageOf(badge));
@@ -30,6 +30,7 @@ describe('publishing', () => {
     body = join(place, 'body.md');
     calls = join(place, 'gh-calls.txt');
     prs = join(place, 'prs.json');
+    heads = join(place, 'heads.json');
     for (const dir of [bare, project, bin]) mkdirSync(dir);
 
     sh(bare, ['init', '-q', '--bare', '-b', 'main']);
@@ -55,16 +56,17 @@ fi
 exec "${realGit}" "$@"
 `,
     );
-    // gh pr view N --json body --jq .body and gh pr edit N --body-file FILE to publish, gh pr list to prune: the
-    // only calls SideShot makes.
+    // gh auth status before anything that needs gh, gh pr view N --json body --jq .body and gh pr edit N
+    // --body-file FILE to publish, gh pr list to prune: the only calls SideShot makes.
     executable(
       join(bin, 'gh'),
       `#!/bin/sh
 echo "$*" >> "${calls}"
 case "$1 $2" in
+  "auth status") exit 0 ;;
   "pr view") cat "${body}" ;;
   "pr edit") cp "$5" "${body}" ;;
-  "pr list") cat "${prs}" ;;
+  "pr list") case " $* " in *" --head "*) cat "${heads}" ;; *) cat "${prs}" ;; esac ;;
   *) echo "gh stand-in cannot $*" >&2; exit 1 ;;
 esac
 `,
@@ -118,12 +120,12 @@ esac
     const text = readFileSync(body, 'utf8');
     assert.equal(markers(text), 1);
     assert.match(text, /^Fixes the pricing card\.\n\n<!-- sideshot:start -->/);
-    const link = 'https://raw.githubusercontent.com/test-owner/test-repo/sideshot/5/card-desk-after.png';
+    const link = 'https://github.com/test-owner/test-repo/raw/refs/heads/sideshot/5/card-desk-after.png';
     assert.ok(text.includes(`<img src="${link}"`), text);
-    // Bound to origin's repository, whatever gh would pick by itself.
+    // gh asked first whether it is signed in; then bound to origin's repository, whatever gh would pick by itself.
     assert.match(
       readFileSync(calls, 'utf8'),
-      /^pr view 5 --json body --jq \.body --repo test-owner\/test-repo\npr edit 5 --body-file .*body\.md --repo test-owner\/test-repo\n$/,
+      /^auth status --hostname github\.com\npr view 5 --json body --jq \.body --repo test-owner\/test-repo\npr edit 5 --body-file .*body\.md --repo test-owner\/test-repo\n$/,
     );
     // The checkout it used to commit is gone again.
     assert.equal(sh(project, ['worktree', 'list']).split('\n').length, 1);
@@ -252,5 +254,64 @@ esac
       assert.equal(result.status, 1);
       assert.match(result.stderr, /only to an origin on GitHub/);
     }
+  });
+
+  /** A PATH with the git stand-in and, when given, a gh of its own: nothing else, so no real gh is found. */
+  const pathWith = (name, gh) => {
+    const dir = join(place, name);
+    mkdirSync(dir, { recursive: true });
+    executable(join(dir, 'git'), readFileSync(join(place, 'bin', 'git'), 'utf8'));
+    if (gh) executable(join(dir, 'gh'), gh);
+    return { ...process.env, PATH: dir };
+  };
+
+  it('says plainly, before opening anything, when the GitHub CLI is missing or not signed in', async () => {
+    const missing = pathWith('no-gh');
+    const signedOut = pathWith('signed-out', '#!/bin/sh\necho "You are not logged into any GitHub hosts." >&2\nexit 1\n');
+    const cases = [{ using: missing, said: /needs the GitHub CLI: install it/ }, { using: signedOut, said: /signed in: gh auth login/ }];
+    for (const { using, said } of cases) {
+      for (const result of [await publish(['--part', 'card=.card', '--update-pr'], { pr: '10', using }), await prune([], using)]) {
+        assert.equal(result.status, 2, result.stderr);
+        assert.match(result.stderr, said);
+        assert.doesNotMatch(result.stderr, /\n\s+at /, 'no stack trace');
+        assert.doesNotMatch(result.stdout, /Took/);
+      }
+    }
+    assert.ok(!onBranch().some((f) => f.startsWith('10/')));
+  });
+
+  it('says plainly when the push is refused, and leaves no checkout behind', async () => {
+    const hook = join(bare, 'hooks', 'pre-receive');
+    executable(hook, '#!/bin/sh\necho "pushes are closed" >&2\nexit 1\n');
+    try {
+      const result = await publish(['--part', 'card=.card', '--publish'], { pr: '11' });
+      assert.equal(result.status, 1, result.stderr);
+      assert.match(result.stderr, /could not push the pictures to sideshot on origin/);
+      assert.match(result.stderr, /pushes are closed/);
+      assert.doesNotMatch(result.stderr, /\n\s+at /, 'no stack trace');
+      assert.equal(sh(project, ['worktree', 'list']).split('\n').length, 1);
+    } finally {
+      rmSync(hook);
+    }
+    assert.ok(!onBranch().some((f) => f.startsWith('11/')));
+  });
+
+  it("finds the branch's own pull request when --pr is left out, and never a fork's of the same branch name", async () => {
+    // A fork's pull request from its own main, listed by gh beside this repository's, as gh matches by name alone.
+    writeFileSync(heads, JSON.stringify([{ number: 40, isCrossRepository: true }, { number: 9, isCrossRepository: false }]));
+    const found = await run(
+      ['--before', addressOf(was), '--after', addressOf(now), '--devices', 'desk', '--wait', '0', '--part', 'card=.card', '--publish'],
+      { cwd: project, env },
+    );
+    assert.equal(found.status, 0, found.stderr);
+    assert.match(found.stdout, /For #9, this branch's pull request\./);
+    assert.ok(onBranch().includes('9/card-desk-after.png'), onBranch().join(', '));
+    assert.ok(!onBranch().some((f) => f.startsWith('40/')));
+
+    // Only the fork's: nothing is taken for it, and the pull request is asked for.
+    writeFileSync(heads, JSON.stringify([{ number: 40, isCrossRepository: true }]));
+    const none = await run(['--before', addressOf(was), '--part', 'card=.card', '--publish'], { cwd: project, env });
+    assert.equal(none.status, 1);
+    assert.match(none.stderr, /Give the pull request/);
   });
 });

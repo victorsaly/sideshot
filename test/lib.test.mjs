@@ -17,9 +17,12 @@ import {
   pictureName,
   plainOf,
   pool,
+  prOfBranch,
   prFoldersOf,
   pruneOptionsOf,
   ringsWithin,
+  runOf,
+  runsOf,
   runKeyOf,
   sheetsOf,
   shownOf,
@@ -347,8 +350,20 @@ describe('tableOf', () => {
   it('has a row for each picture taken, linked on the branch', () => {
     const t = table(['hero-desk-before.png', 'hero-desk-after.png']);
     assert.match(t, /\*\*hero, desk\*\* <sub>1280×900<\/sub>/);
-    assert.ok(t.includes('<img src="https://raw.githubusercontent.com/o/r/sideshot/12/hero-desk-after.png"'), t);
+    assert.ok(t.includes('<img src="https://github.com/o/r/raw/refs/heads/sideshot/12/hero-desk-after.png"'), t);
     assert.doesNotMatch(t, /phone/);
+  });
+  // raw.githubusercontent.com answers 404 for a private repository, even to people who can read it; github.com
+  // sends them on to the picture with their sign-in, and for a public one ends at the same picture.
+  it('links the pictures through github.com, so they show in a private repository too', () => {
+    const t = table(['hero-desk-before.png', 'hero-desk-after.png']);
+    const hosts = [...t.matchAll(/<img src="([^"]+)"/g)].map(([, src]) => new URL(src).host);
+    assert.equal(hosts.length, 2, t);
+    assert.deepEqual(new Set(hosts), new Set(['github.com']));
+  });
+  it('names the branch in full, so one with a slash in it is not read as part of the path', () => {
+    const t = table(['hero-desk-before.png', 'hero-desk-after.png'], { branch: 'pictures/sideshot' });
+    assert.ok(t.includes('https://github.com/o/r/raw/refs/heads/pictures/sideshot/12/hero-desk-before.png'), t);
   });
   it('says when one side is not there', () => {
     assert.match(table(['hero-phone-dark-after.png']), /\| \(not there\) \| <img/);
@@ -484,5 +499,36 @@ describe('prFoldersOf', () => {
       '040000 tree ffff\t12',
     ];
     assert.deepEqual(prFoldersOf(entries), ['5', '12']);
+  });
+});
+
+describe('prOfBranch', () => {
+  const own = (number) => ({ number, isCrossRepository: false });
+  const fork = (number) => ({ number, isCrossRepository: true });
+
+  it('takes the one open pull request whose branch is in this repository', () => {
+    assert.equal(prOfBranch([own(12)]), '12');
+    // A fork's pull request from a branch of the same name (forks often open them from main) is never taken.
+    assert.equal(prOfBranch([fork(40), own(12), fork(41)]), '12');
+  });
+  it('takes none when it would have to guess, so --pr is asked for', () => {
+    for (const listed of [[], [fork(40)], [own(12), own(13)], null, 'x', [{ number: '12; rm', isCrossRepository: false }]])
+      assert.equal(prOfBranch(listed), null, JSON.stringify(listed));
+  });
+});
+
+describe('runsOf and runOf', () => {
+  it('reads what earlier runs kept, and nothing from a file that is not theirs', () => {
+    assert.deepEqual(runsOf('{"k":{"same":["a on desk"],"nothing":null}}'), { k: { same: ['a on desk'], nothing: null } });
+    for (const text of ['', '{nope', 'null', '[]', '"x"', '12']) assert.deepEqual(runsOf(text), {}, text);
+  });
+  it('gives a run what it found, or nothing found when what is kept is not in that shape', () => {
+    const runs = { a: { same: ['x'], nothing: null }, b: { same: [], nothing: 'Nothing to compare.' } };
+    assert.deepEqual(runOf(runs, 'a'), { same: ['x'], nothing: null });
+    assert.deepEqual(runOf(runs, 'b'), { same: [], nothing: 'Nothing to compare.' });
+    const none = { same: [], nothing: null };
+    for (const kept of [undefined, null, 'x', { same: 'x' }, { same: [1] }, { same: [], nothing: 4 }])
+      assert.deepEqual(runOf({ k: kept }, 'k'), none, JSON.stringify(kept));
+    assert.deepEqual(runOf({}, '__proto__'), none);
   });
 });
