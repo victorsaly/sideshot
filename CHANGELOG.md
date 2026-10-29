@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.4 (unreleased)
+## 0.5.4 (2026-10-29)
 
 - **Pictures show in a private repository's pull requests.** The table linked them on `raw.githubusercontent.com`,
   which answers 404 for a private repository, even to those who can read it. It links them through `github.com` now,
