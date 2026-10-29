@@ -123,8 +123,8 @@ Add `--note` and `--mark-changes` and the picture says what changed: a numbered 
 
 1. **Install** with `npx skills add victorsaly/sideshot -g` (or the Claude Code plugin above).
 2. **Have Playwright**: in the project (`npm i -D playwright && npx playwright install chromium`), or, for a
-   project without Node (Python, Ruby, Go, a static site), globally (`npm i -g playwright`). Your agent asks
-   before adding it.
+   project without Node (Python, Ruby, Go, a static site), globally
+   (`npm i -g playwright && npx playwright install chromium`). Your agent asks before adding it.
 3. **Ask on a branch with a PR**: *"SideShot this PR"*. Add `.sideshot/` to `.gitignore`.
 
 Optional: save where *before* and *after* live in `.sideshot.json`, so later runs need nothing else:
@@ -186,7 +186,7 @@ SideShot says what went wrong, and your agent usually acts on it. When you are r
 | It says | What to do |
 |---|---|
 | *Nothing answers at http://localhost:…* | Start the dev or preview server first, or give its address with `--after`. |
-| *Playwright is not installed* (exit 2) | `npm i -D playwright && npx playwright install chromium`, or `npm i -g playwright` for a project without Node. |
+| *Playwright is not installed* (exit 2) | `npm i -D playwright && npx playwright install chromium`, or for a project without Node, `npm i -g playwright && npx playwright install chromium`. |
 | *Not on the page (new or removed): …* | The part is only on one side. Fine when the change adds or removes it; otherwise check `--part`'s selector. |
 | *Could not press … for: …* | What `--click` names is not there on that side, so that side is pictured unpressed. |
 | *The same before and after* (exit 3) | Check that `--after` runs this branch, and that `--page` and `--part` show the change. If it truly does not show there, `--update-pr --reuse` says so in the PR. |
