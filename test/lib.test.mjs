@@ -357,7 +357,7 @@ describe('tableOf', () => {
   // sends them on to the picture with their sign-in, and for a public one ends at the same picture.
   it('links the pictures through github.com, so they show in a private repository too', () => {
     const t = table(['hero-desk-before.png', 'hero-desk-after.png']);
-    assert.doesNotMatch(t, /raw\.githubusercontent\.com/);
+    assert.ok(!t.includes('raw.githubusercontent.com'), t);
   });
   it('names the branch in full, so one with a slash in it is not read as part of the path', () => {
     const t = table(['hero-desk-before.png', 'hero-desk-after.png'], { branch: 'pictures/sideshot' });
