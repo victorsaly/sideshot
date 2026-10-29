@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.6 (2026-10-29)
+
+- **`--mark-changes` marks what changed, not lines that only moved a pixel.** A page's lines sit at fractional
+  heights and are drawn at the nearest whole pixel, so when something above them changes height, each can land a
+  pixel higher or lower than it was. Beside a gutter that runs down every row (a diff's + column), the space between
+  them read as content, and a pixel more or less of it was boxed or ruled: small boxes round single letters, dashed
+  rules between lines that had not changed. A label in a button that did not move, a pixel or two higher, was boxed
+  too, its icon and its words each rounded on their own. Space that grew or shrank by 2 pixels or less is now left
+  alone, and so is a box or a rule over something whose every pixel is still within 2 pixels of where it was, both
+  ways, so a mark that turned into another in the same place is still marked. On the pictures of
+  victorsaly/skills#2, 7 marks on a phone became 1, the line that was added, and 7 on the merge section became the
+  one that changed.
+
 ## 0.5.5 (2026-10-29)
 
 - **The description says what SideShot pictures: the part that changed, not the whole page**, shown first, and
