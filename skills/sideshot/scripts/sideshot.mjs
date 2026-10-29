@@ -281,13 +281,42 @@ const setup = setupPath
       .default
   : null;
 
+// How long a page is waited for, in milliseconds. All but `step` are the most it is given: a page ready sooner is
+// pictured sooner, and one never ready is pictured as it is, so a longer wait only slows the pages that never settle.
+const waits = {
+  // A part drawn by the server is there at once; one drawn by script, a moment later. --wait can be longer.
+  appear: 1000,
+  // A reveal or a transition: a few hundred milliseconds, rarely a second. One longer is pictured where it is.
+  animations: 3000,
+  // The part's height is read every `step`; it holds once `holds` reads in a row agree (0.6 s), and a part that
+  // never stops growing (a feed, a ticker) is given `reads` of them (9 s) before it is pictured as it is.
+  step: 150,
+  holds: 4,
+  reads: 60,
+  // A window made taller lays out again: a frame or two, and a chart's own transition.
+  resized: 600,
+  // An image that has not come by then is not coming.
+  images: 5000,
+  // Lazy content, once scrolled to: most pages go quiet in a second or two, and some poll for ever.
+  quiet: 8000,
+  // Scrolled back to the top, the page's own scroll handlers run (a sticky header, a reveal) before it goes on.
+  scrolledBack: 300,
+  // Something to press that is not there by then is said not to have been pressed.
+  press: 5000,
+};
+// Room below a part taller than the window, so it ends inside it, with what it sits on.
+const below = 80;
+// A ring's number is a disc of radius 15 px, centred 7 px out from what it rings, with a 1 px edge: it reaches
+// 23 px out, and 28 keeps all of it in the picture.
+const ringRoom = 28;
+
 /** Opens what the part sits in, lets it settle, and pictures it. Returns where each noted element sits in the
  * picture, in CSS pixels, or null when the page has no such part. */
 async function picture(p, selector, file, noted = [], margin = 0) {
   const part = p.locator(selector).first();
   // A part drawn late (once its data comes, or once something is pressed) is given up to --wait to appear before
   // it is said to be missing.
-  await part.waitFor({ state: 'attached', timeout: Math.max(wait, 1000) }).catch(() => undefined);
+  await part.waitFor({ state: 'attached', timeout: Math.max(wait, waits.appear) }).catch(() => undefined);
   if ((await part.count()) === 0) return null;
   // On the element the locator found, not one the page looks up again: a selector of Playwright's own
   // (:has-text, text=) is not one the page's querySelector can read.
@@ -306,25 +335,25 @@ async function picture(p, selector, file, noted = [], margin = 0) {
     Promise.all(document.getAnimations()
       .filter((a) => a.effect && a.effect.getComputedTiming().endTime !== Infinity)
       .map((a) => a.finished.catch(() => undefined))),
-    new Promise((ok) => setTimeout(ok, 3000)),
+    new Promise((ok) => setTimeout(ok, ${waits.animations})),
   ]).then(() => undefined)`);
   let height = -1;
-  for (let steady = 0, tries = 0; steady < 4 && tries < 60; tries++) {
+  for (let steady = 0, tries = 0; steady < waits.holds && tries < waits.reads; tries++) {
     const now = Math.round((await part.boundingBox())?.height ?? 0);
     steady = now === height ? steady + 1 : 0;
     height = now;
-    await p.waitForTimeout(150);
+    await p.waitForTimeout(waits.step);
   }
   // A part taller than the window is pictured beyond it, where a chart can lay out at no height.
   const size = p.viewportSize();
-  if (size && height + 80 > size.height) {
-    await p.setViewportSize({ width: size.width, height: height + 80 });
+  if (size && height + below > size.height) {
+    await p.setViewportSize({ width: size.width, height: height + below });
     await part.scrollIntoViewIfNeeded();
-    await p.waitForTimeout(600);
+    await p.waitForTimeout(waits.resized);
   }
   // Images in the part, and the part when it is one, loaded (briefly: one that never comes is pictured as it is).
-  // A lazy one starts only once it is in view, which is now.
-  await part.evaluate((el) =>
+  // A lazy one starts only once it is in view, which is now. This runs in the page, so the wait is handed to it.
+  await part.evaluate((el, ms) =>
     Promise.race([
       Promise.all(
         /** @type {HTMLImageElement[]} */ ([el, ...el.querySelectorAll('img')].filter((i) => i.tagName === 'IMG'))
@@ -334,8 +363,9 @@ async function picture(p, selector, file, noted = [], margin = 0) {
             i.addEventListener('error', ok);
           })),
       ),
-      new Promise((ok) => setTimeout(ok, 5000)),
+      new Promise((ok) => setTimeout(ok, ms)),
     ]).then(() => undefined),
+    waits.images,
   );
   if (margin === 0) {
     await part.screenshot({ path: file });
@@ -398,15 +428,15 @@ async function shoot({ device, scheme, when, base, part }) {
     // Down to the end and back once, so what loads lazily has loaded: until the network goes quiet (briefly:
     // some pages poll forever).
     await p.evaluate('window.scrollTo(0, document.body.scrollHeight)');
-    await p.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => undefined);
+    await p.waitForLoadState('networkidle', { timeout: waits.quiet }).catch(() => undefined);
     await p.evaluate('window.scrollTo(0, 0)');
-    await p.waitForTimeout(300);
+    await p.waitForTimeout(waits.scrolledBack);
     let pressed = true;
     if (click) {
       // What is pressed may be new, or gone, so on one side only: that side is pictured as it is, and said. What it
       // opens is waited for in picture(), with the part's one wait.
       try {
-        await p.locator(click).first().click({ timeout: 5000 });
+        await p.locator(click).first().click({ timeout: waits.press });
       } catch {
         pressed = false;
       }
@@ -420,7 +450,7 @@ async function shoot({ device, scheme, when, base, part }) {
       part.selector,
       join(out, name),
       when === 'after' ? notes : [],
-      notes.length > 0 ? 28 : 0,
+      notes.length > 0 ? ringRoom : 0,
     );
     return { name, rings, pressed, said: `${part.name} ${when} on ${label(device.name, scheme)}` };
   } finally {
