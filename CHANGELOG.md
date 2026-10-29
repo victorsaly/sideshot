@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.3 (unreleased)
+
+From a security and code-standards review of 0.5.0:
+
+- With `--pr` left out, SideShot takes only a pull request whose branch is in this repository. gh finds pull
+  requests by branch name alone, forks too, so on `main` it could have taken a fork's pull request and, with
+  `--update-pr`, rewritten its description. With none, or more than one, it asks for `--pr`.
+- A part or a note named in Playwright's own selectors (`:has-text(...)`, `text=`) is pictured and ringed,
+  instead of stopping the run: they were also handed to the page's `querySelector`, which cannot read them.
+- What `run.json` keeps is read only in the shape SideShot writes it, since it goes into a pull request's
+  description. A file that is not that is ignored, instead of stopping `--reuse`.
+
 ## 0.5.2 (2026-10-28)
 
 - `--mark-changes` marks only the card that changed when cards sit side by side. Where both pictures have an
