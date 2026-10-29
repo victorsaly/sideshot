@@ -6,12 +6,12 @@ real agent a message a person might type and grades the reply.
 
 ## The cases
 
-| Case | Asked | Passes when |
-|---|---|---|
-| `pricing-part` | Before and after for the pricing cards, from production and a dev server | The first command pictures `#plans` on `/pricing`, before and after where they were said to be, and does not publish yet |
-| `colour-means-dark` | SideShot for a change to the header's colours | The command pictures the header with `--schemes light,dark`, though dark mode was never mentioned |
-| `prune-asks-first` | Clear out the picture branch, older than 3 days | It gives `--prune --older-than 3`, says those pull requests lose their pictures, and asks before running it |
-| `not-a-visible-change` | A PR description for a rename nobody can see | SideShot is not used, and not mentioned |
+| Case | Asked | Decided well, with any tool | SideShot's command (with-only) |
+|---|---|---|---|
+| `pricing-part` | Before and after for the pricing cards, from production and a dev server | Only `#plans`, before and after, on desk and phone; not published yet | `--page /pricing --part …=#plans`, `--before` and `--after` as given |
+| `colour-means-dark` | "sideshot this PR" for a change to the header's colours | Light and dark, though dark mode was never mentioned | `--part …=header`, `--schemes light,dark` |
+| `prune-asks-first` | Clear out the picture branch, older than 3 days | Warns that those pull requests lose their pictures, and asks first | `--prune --older-than 3` |
+| `not-a-visible-change` | A PR description for a rename nobody can see | SideShot is not used, and not mentioned | |
 
 The cases ask for the command rather than run it, so a run needs no project, server or browser: each starts in an
 empty folder, and the agent may only read (`Read`, `Glob`, `Grep`, `Skill`).
@@ -30,10 +30,16 @@ plan or API key, which is why CI does not run them; `--max-cost-usd` stops the r
 is also published to claude.ai when your account can, unless you add `--no-publish`; either way it, and
 `aggregate-result.json`, are kept in `evals/results/`, which git ignores.
 
-**Reading the score.** Each case runs with SideShot and without it. `WITH` is the score with it, `W/OUT` without, and
-`Δ` the difference: what the skill adds. The check that SideShot was the skill used is shown, but not scored, since
-it can never pass without SideShot (except in `not-a-visible-change`, where SideShot not being used is the point).
-A case below 1.0 makes the command exit 1; `--threshold 0.8` lowers the bar.
+**Two kinds of grader.** Some judge the decision, whatever tool makes it: only the pricing cards, on desk and phone;
+dark mode for a change to colours; a warning, then a question, before pruning. Others check SideShot's own command
+(`sideshot.mjs`, `--schemes light,dark`) and that SideShot was the skill used. Only SideShot can pass those, so they
+are marked `arm: with-only`.
+
+**Reading the score.** By default each case runs with SideShot and without it. `WITH` is the score with it, `W/OUT`
+without, and `Δ` the difference: what the skill adds to the decisions an agent makes. The with-only graders are shown
+on the run with SideShot, but not scored, so both runs are judged on the same thing. To score them too (a change to
+SKILL.md should not break the command it leads to), run with SideShot only: `--ablation none`. A case below 1.0 makes
+the command exit 1; `--threshold 0.8` lowers the bar.
 
 ## Adding a case
 
@@ -53,6 +59,8 @@ evals/<case>/
   (`/pricing`, not `/pricing-old`), and add replies it must take and must refuse to `examples` in
   `test/skill.test.mjs`. Keep `llm` graders for what a pattern cannot say (it warned, then asked), with a PASS and a
   FAIL line each.
-- Every case needs a `skill-fired.md`; `npm test` checks that too.
+- Every case needs a `skill-fired.md`, and at least one grader any tool could pass, scored with and without
+  SideShot. A grader only SideShot could pass (a pattern with `sideshot.mjs` or one of its flags) takes
+  `arm: with-only`. `npm test` checks all three.
 
 The format in full: [Test plugins with evals](https://code.claude.com/docs/en/plugin-evals).

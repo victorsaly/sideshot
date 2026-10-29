@@ -40,6 +40,13 @@ describe('SKILL.md', () => {
     assert.ok(lines < 500, `${lines} lines`);
   });
 
+  it('fits whole in what Claude Code puts back after compacting: 20,000 bytes', () => {
+    // A skill read again after the conversation is compacted is cut at 20,000 characters, as obra/superpowers
+    // found (tests/skill-size there). Bytes are the stricter count.
+    const bytes = Buffer.byteLength(read(`${skill}/SKILL.md`));
+    assert.ok(bytes <= 20_000, `${bytes} bytes`);
+  });
+
   it('links only to files that are there, each one step from SKILL.md', () => {
     for (const to of linksOf(body)) {
       assert.ok(existsSync(join(root, skill, to)), `${to} is in ${skill}/`);
@@ -76,9 +83,11 @@ describe('the version', () => {
   const plugin = JSON.parse(read('.claude-plugin/plugin.json'));
   const readme = read('README.md');
 
-  it('is the same in plugin.json, the README badge, and the newest changelog entry', () => {
+  it('is the same in plugin.json, SKILL.md, the README badge, and the newest changelog entry', () => {
     const { version } = plugin;
     assert.match(version, /^\d+\.\d+\.\d+$/);
+    // What an install with `npx skills add` has to say which version it is: it has SKILL.md, not plugin.json.
+    assert.equal(front.match(/^ {2}version: (.*)$/m)?.[1], version, "SKILL.md's metadata");
     assert.equal(readme.match(/badge\/version-([\d.]+)-/)?.[1], version, 'the badge');
     assert.equal(readme.match(/alt="Version ([\d.]+)"/)?.[1], version, "the badge's words");
     assert.equal(read('CHANGELOG.md').match(/^## (\S+) /m)?.[1], version, 'the changelog');
@@ -102,7 +111,8 @@ describe('the evals', () => {
   const cases = readdirSync(join(root, 'evals'), { withFileTypes: true })
     .filter((e) => e.isDirectory() && e.name !== 'results')
     .map((e) => e.name);
-  // A file's frontmatter, as `key: value` pairs; a 'single-quoted' value is unquoted as YAML does it.
+  /** A file's frontmatter, as `key: value` pairs; a 'single-quoted' value is unquoted as YAML does it.
+   * @returns {Record<string, string>} */
   const frontOf = (path) => {
     const [, yaml] = read(path).match(/^---\n([\s\S]*?)\n---\n?/) ?? [];
     assert.ok(yaml !== undefined, `${path} opens with --- frontmatter ---`);
@@ -116,6 +126,47 @@ describe('the evals', () => {
 
   it('has at least three cases', () => {
     assert.ok(cases.length >= 3, `${cases.length} cases`);
+  });
+
+  // Each case runs with SideShot and without. A grader that only SideShot could pass (its script, its flags) says
+  // nothing about the run without it, so it is marked with-only; the score both runs share comes from graders that
+  // judge the decision, whatever the tool. Without one, the difference between them is SideShot's name, not its use.
+  /** @returns {Record<string, string>[]} Each grader's frontmatter, with its file name and its text. */
+  const gradersOf = (name) =>
+    readdirSync(join(root, 'evals', name, 'graders'))
+      .filter((f) => f.endsWith('.md'))
+      .map((f) => ({ file: f, ...frontOf(`evals/${name}/graders/${f}`), body: read(`evals/${name}/graders/${f}`) }));
+  const sideshotOnly = (g) => /sideshot\.mjs|--[a-z]/.test(g.pattern ?? '');
+  const scoredInBoth = (g) =>
+    g.arm === 'both' || (g.arm !== 'with-only' && !(g.type === 'tool_used' && g.tool === 'Skill'));
+
+  it('marks a grader only SideShot could pass as with-only', () => {
+    for (const name of cases) {
+      for (const g of gradersOf(name).filter(sideshotOnly)) {
+        assert.equal(g.arm, 'with-only', `evals/${name}/graders/${g.file}`);
+      }
+    }
+  });
+
+  it('scores each case, with and without SideShot, on what was decided', () => {
+    for (const name of cases) assert.ok(gradersOf(name).some(scoredInBoth), `evals/${name} has a grader for both`);
+  });
+
+  it('gives each judge a PASS and a FAIL to choose between', () => {
+    for (const name of cases) {
+      for (const g of gradersOf(name).filter((g) => g.type === 'llm')) {
+        assert.match(g.body, /^PASS if /m, `evals/${name}/graders/${g.file}`);
+        assert.match(g.body, /^FAIL if /m, `evals/${name}/graders/${g.file}`);
+      }
+    }
+  });
+
+  it('takes only an arm the runner knows', () => {
+    for (const name of cases) {
+      for (const g of gradersOf(name).filter((g) => g.arm !== undefined)) {
+        assert.ok(['with-only', 'both'].includes(g.arm), `evals/${name}/graders/${g.file}: arm ${g.arm}`);
+      }
+    }
   });
 
   it('gives each case a prompt the runner takes, and nothing it would refuse', () => {
