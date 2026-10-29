@@ -119,16 +119,24 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
       // blocks), or when its rows are nowhere in "after"; space that only shrank is not.
       const inAfter = new Set(HB);
       const added = new Uint8Array(B.h), cuts = [];
-      const cut = (run, y) => { if (isContent(A, run.start) || !inAfter.has(run.hash)) cuts.push(y); };
+      const cut = (run, y) => { if (isContent(A, run.start) || !inAfter.has(run.hash)) cuts.push({ y, run }); };
+      // Where each row of "after" was in "before", as rows to add: known where rows lined up, and for what did
+      // not, taken from the nearest row above that did.
+      const toA = new Float64Array(B.h).fill(NaN);
       // A stretch that lined up but changed height is space that grew or shrank, unless it is content, a bar or
-      // a button: then its new height is a change.
+      // a button: then its new height is a change. Not by 2 pixels or less, though: a page's lines sit at
+      // fractional heights, each drawn at the nearest whole pixel, so when something above them moves, each can
+      // land a pixel higher or lower than it was, and the space between two of them grow or shrink by up to 2.
+      // Beside a gutter that runs down every row (a diff's + column), that space reads as content.
+      const rounding = 2;
       let i = 0, j = 0;
       while (i < n && j < m) {
         if (same(i, j)) {
           const was = RA[i].end - RA[i].start, now = RB[j].end - RB[j].start;
-          if (was !== now && isContent(B, RB[j].start)) {
+          toA.fill(RA[i].start - RB[j].start, RB[j].start, RB[j].end);
+          if (Math.abs(now - was) > rounding && isContent(B, RB[j].start)) {
             if (now > was) added.fill(1, RB[j].start, RB[j].end);
-            else cuts.push(RB[j].end);
+            else cuts.push({ y: RB[j].end, run: null });
           }
           i++; j++;
         }
@@ -137,6 +145,34 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
       }
       for (; j < m; j++) added.fill(1, RB[j].start, RB[j].end);
       for (; i < n; i++) cut(RA[i], B.h - 1);
+      let known = toA.find((d) => !Number.isNaN(d)) ?? 0;
+      for (let y = 0; y < B.h; y++) if (Number.isNaN(toA[y])) toA[y] = known; else known = toA[y];
+      // What only moved by rounding, a label a pixel or two higher in a button that did not move, its icon and its
+      // words each rounded on their own, lines up with no row; yet every pixel of it is still there, within two
+      // pixels of where it was, and every pixel that was there is still near. Both ways, so a mark that turned into
+      // another in the same place (an upright stroke, now a flat one) is not taken for one that moved.
+      const near = 2, allowed = 4;
+      const stillNear = (P, Q, l, t, r, btm, dy) => {
+        let missing = 0;
+        for (let y = t; y < btm; y++)
+          for (let xx = l; xx < r; xx++) {
+            const k = (y * P.w + xx) * 4;
+            let found = false;
+            for (let ddy = -near; ddy <= near && !found; ddy++) {
+              const qy = y + dy + ddy;
+              if (qy < 0 || qy >= Q.h) continue;
+              for (let ddx = -near; ddx <= near && !found; ddx++) {
+                const qx = xx + ddx;
+                if (qx < 0 || qx >= Q.w) continue;
+                const q = (qy * Q.w + qx) * 4;
+                found = Math.abs(P.d[k] - Q.d[q]) + Math.abs(P.d[k + 1] - Q.d[q + 1]) + Math.abs(P.d[k + 2] - Q.d[q + 2]) <= 48;
+              }
+            }
+            if (!found && ++missing > allowed) return false;
+          }
+        return true;
+      };
+      const onlyMoved = (l, t, r, btm, dy) => stillNear(B, A, l, t, r, btm, dy) && stillNear(A, B, l, t + dy, r, btm + dy, -dy);
       // What was added is boxed around what differs from the unchanged row next to it (above, or below at the
       // top), not from the background: a card's border runs down both, so it does not stretch the box.
       const boxes = [];
@@ -158,12 +194,28 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
               if (t === -1) t = yy;
               btm = yy;
             }
-        if (bx1 >= 0 && btm - t >= 2) boxes.push([bx0, t, bx1 + 1, btm + 1]);
+        if (bx1 >= 0 && btm - t >= 2 && !onlyMoved(bx0, t, bx1 + 1, btm + 1, toA[t])) boxes.push([bx0, t, bx1 + 1, btm + 1]);
         y = y1;
       }
       // Where something was only taken out, a short rule marks the place it was, within the column: inset by
-      // less in a narrow column, and never shorter than 12 pixels, so a thin thing taken out still shows.
-      const rules = [...new Set(cuts)].filter((y) => !added[y] && !added[Math.max(0, y - 1)]);
+      // less in a narrow column, and never shorter than 12 pixels, so a thin thing taken out still shows. Not
+      // where what was taken out is still there, a pixel or two away.
+      // The rows taken out at each place, or none when it is a block that only got shorter (always ruled).
+      const ruledAt = new Map();
+      for (const { y, run } of cuts) {
+        const at = ruledAt.get(y) ?? { runs: [], shrank: false };
+        if (run) at.runs.push(run);
+        else at.shrank = true;
+        ruledAt.set(y, at);
+      }
+      const rules = [...ruledAt]
+        .filter(([y]) => !added[y] && !added[Math.max(0, y - 1)])
+        .filter(([y, { runs, shrank }]) => {
+          if (shrank) return true;
+          const t = Math.min(...runs.map((r) => r.start)), btm = Math.max(...runs.map((r) => r.end));
+          return !onlyMoved(x0, y, x1, Math.min(B.h, y + btm - t), t - y);
+        })
+        .map(([y]) => y);
       const inset = Math.min(6, Math.floor(cw / 4));
       return {
         boxes,

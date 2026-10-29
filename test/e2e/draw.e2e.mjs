@@ -145,6 +145,77 @@ describe('draw.mjs', () => {
     assert.ok(runs[0].bottom < 70, `marked down to row ${runs[0].bottom}, into the block that only moved`);
   });
 
+  // Lines on a page sit at fractional heights, and each is drawn at the nearest whole pixel: when something above
+  // them changes height, some round the other way, and land a pixel higher or lower than they were, one by one.
+  // A gutter down the whole picture (a diff's + column, a list's rule) makes the space between them read as content.
+  const lines = (shifts, scale = 1) => {
+    const p = (v) => v * scale;
+    const rects = [[0, 0, p(60), p(200), '#3355aa']];
+    [20, 60, 100, 140].forEach((top, k) => {
+      const y = top + (shifts[k] ?? 0);
+      rects.push([p(80), p(y), p(240), p(10), '#222222'], [p(100), p(y + 10), p(8), p(4), '#222222']);
+    });
+    return { width: p(400), height: p(200), rects };
+  };
+
+  it('does not mark lines that only moved a pixel, each its own way, as rounding moves them', async () => {
+    const { changed, runs } = await marked(lines([0, 0, 0, 0]), lines([1, -1, 0, 1]));
+    assert.equal(changed, 0, JSON.stringify(runs));
+    assert.deepEqual(runs, []);
+  });
+
+  it('does not mark them at twice the pixels either, where a rounding is a device pixel', async () => {
+    // At 2x, a line that rounds the other way moves one device pixel, half of a CSS pixel: each line, with what
+    // hangs below it, a device pixel up, down, or not at all.
+    const was = lines([0, 0, 0, 0], 2);
+    const moved = [0, 1, 1, -1, -1, 0, 0, 1, 1];
+    const now = { ...was, rects: was.rects.map(([l, t, ...rest], k) => [l, Number(t) + moved[k], ...rest]) };
+    const { changed, runs } = await marked(was, now, { scale: 2 });
+    assert.equal(changed, 0, JSON.stringify(runs));
+  });
+
+  // A button that stays where it was, its icon and its words each rounded on their own: the words land two pixels
+  // higher, the icon does not move, so the rows across them match no row before.
+  const button = (wordsUp) => ({
+    width: 400,
+    height: 120,
+    rects: [
+      [40, 30, 320, 50, '#111111'],
+      [150, 46, 16, 16, '#eeeeee'],
+      [176, 48 - wordsUp, 70, 12, '#eeeeee'],
+      [190, 52 - wordsUp, 4, 8, '#111111'],
+    ],
+  });
+
+  it('does not mark words that only moved a pixel or two inside a button that did not', async () => {
+    const { changed, runs } = await marked(button(0), button(2));
+    assert.equal(changed, 0, JSON.stringify(runs));
+  });
+
+  it('still boxes one small thing that changed in a long row of like things', async () => {
+    // Twenty marks in a row, as letters in a line; one of them changes colour.
+    const row = (k) => ({
+      width: 400,
+      height: 80,
+      rects: Array.from({ length: 20 }, (_, i) => [20 + i * 18, 30, 12, 16, i === k ? '#cc3300' : '#222222']),
+    });
+    const { changed, runs } = await marked(row(-1), row(7));
+    assert.equal(changed, 1, JSON.stringify(runs));
+  });
+
+  it('still boxes a mark that turned into another in the same place, as a letter would', async () => {
+    // An upright stroke becomes a flat one where it stood: each shares a corner with the other, no more.
+    const glyph = (flat) => ({ width: 400, height: 80, rects: [[100, 30, flat ? 16 : 4, flat ? 4 : 16, '#222222']] });
+    const { changed, runs } = await marked(glyph(false), glyph(true));
+    assert.ok(changed >= 1, JSON.stringify(runs));
+  });
+
+  it('still boxes a line that moved further than rounding, beside a gutter', async () => {
+    // The second line 6 pixels lower: the space above it grew by more than any rounding.
+    const { changed, runs } = await marked(lines([0, 0, 0, 0]), lines([0, 6, 0, 0]));
+    assert.ok(changed >= 1, JSON.stringify(runs));
+  });
+
   it('boxes a solid block that only got taller, as something changed', async () => {
     const was = { width: 400, height: 140, rects: [[40, 30, 200, 20, '#3355aa']] };
     const now = { width: 400, height: 140, rects: [[40, 30, 200, 50, '#3355aa']] };
