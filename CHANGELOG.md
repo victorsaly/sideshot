@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.4 (unreleased)
+
+Measured against Anthropic's checklist for skills and the most-starred skill repositories:
+
+- **Evals.** Four cases under `evals/`, run with `claude plugin eval .`. They check that an agent asked in plain words
+  pictures the part that changed and looks before it publishes, adds dark mode when colours changed, says what
+  pruning takes away and asks first, and leaves SideShot alone for a change nobody can see.
+- **`npm test` checks the skill's own files.** SKILL.md's name, description and length, that its links are there
+  and go one step deep, that the eval cases are ones the runner takes, and that `plugin.json`, the README badge
+  and the newest changelog entry give the same version.
+- **What each wait is for.** The timings in `sideshot.mjs` are named in one place, `waits`, each with why it is that
+  long. They have not changed.
+- **When something goes wrong**, in the README: what each message means and what to do.
+- **For people and agents working on SideShot**: `CONTRIBUTING.md`, `AGENTS.md` (and `CLAUDE.md`, which reads
+  it), issue forms and a pull request checklist.
+
 ## 0.5.3 (unreleased)
 
 From a security and code-standards review of 0.5.0:
