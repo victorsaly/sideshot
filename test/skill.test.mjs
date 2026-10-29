@@ -145,7 +145,8 @@ describe('the evals', () => {
     readdirSync(join(root, 'evals', name, 'graders'))
       .filter((f) => f.endsWith('.md'))
       .map((f) => ({ file: f, ...frontOf(`evals/${name}/graders/${f}`), body: read(`evals/${name}/graders/${f}`) }));
-  const sideshotOnly = (g) => /sideshot\.mjs|--[a-z]/.test(g.pattern ?? '');
+  // One that asks for SideShot's command; one that asks for it to be absent (match: not_contains) anyone can pass.
+  const sideshotOnly = (g) => /sideshot\.mjs|--[a-z]/.test(g.pattern ?? '') && g.match !== 'not_contains';
   const scoredInBoth = (g) =>
     g.arm === 'both' || (g.arm !== 'with-only' && !(g.type === 'tool_used' && g.tool === 'Skill'));
 
@@ -229,6 +230,27 @@ describe('the evals', () => {
     'prune-asks-first/graders/command.md': {
       takes: ['node sideshot.mjs --prune --older-than 3', 'node sideshot.mjs --older-than "3" --prune'],
       refuses: ['node sideshot.mjs --prune --older-than 30', 'node sideshot.mjs --prune --older-than 3.5'],
+    },
+    'show-reviewers-the-button/graders/command.md': {
+      takes: [
+        'node sideshot.mjs --page /cart --part "checkout=.checkout button" --before https://example.com ' +
+          '--after http://localhost:3000',
+        "node sideshot.mjs --part 'button=.checkout button' --after http://localhost:3000/ --page /cart " +
+          '--before https://example.com --mark-changes',
+        // Before and after saved in .sideshot.json, as SKILL.md suggests, so the command needs only the part.
+        'put `{ "before": "https://example.com", "after": "http://localhost:3000" }` in `.sideshot.json`\n' +
+          'node <skill>/scripts/sideshot.mjs --page /cart \\\n  --part checkout=".checkout button" --mark-changes',
+      ],
+      refuses: [
+        'node sideshot.mjs --page /cart --part "page=body" --before https://example.com --after http://localhost:3000',
+        'node sideshot.mjs --page /cart-old --part "b=.checkout button" --before https://example.com --after http://localhost:3000',
+        'node sideshot.mjs --page /cart --part "b=.checkout button" --before https://example.com --after http://localhost:30001',
+        'node sideshot.mjs --page /cart --part "b=.checkout button" --after http://localhost:3000',
+        // Production and the branch the wrong way round, on the command line or in .sideshot.json.
+        'node sideshot.mjs --page /cart --part "b=.checkout button" --before http://localhost:3000 --after https://example.com',
+        '{ "before": "http://localhost:3000", "after": "https://example.com" } in .sideshot.json\n' +
+          'node sideshot.mjs --page /cart --part "b=.checkout button"',
+      ],
     },
   };
   for (const [path, { takes, refuses }] of Object.entries(examples)) {

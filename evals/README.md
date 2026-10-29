@@ -12,6 +12,14 @@ real agent a message a person might type and grades the reply.
 | `colour-means-dark` | "sideshot this PR" for a change to the header's colours | Light and dark, though dark mode was never mentioned | `--part …=header`, `--schemes light,dark` |
 | `prune-asks-first` | Clear out the picture branch, older than 3 days | Warns that those pull requests lose their pictures, and asks first | `--prune --older-than 3` |
 | `not-a-visible-change` | A PR description for a rename nobody can see | SideShot is not used, and not mentioned | |
+| `api-change-not-visible` | A near miss: the pricing page's API changed, but nothing on screen | SideShot is not used, nor its command proposed | |
+| `one-screenshot-not-a-pr` | A near miss: one screenshot of the home page, for the docs | SideShot is not used, nor its command proposed | |
+| `show-reviewers-the-button` | "Show the reviewers how it looked and how it looks now", with no word for pictures | Only `.checkout button` on /cart, before and after, shown first | `--page /cart --part …=.checkout button`, `--before` and `--after` as given |
+
+The near misses are what a description that says too much would pull SideShot into; the last case is what one that
+says too little would miss. They came in with 0.5.5, which found the last one missed once in three: the agent named
+SideShot from its description, never opened it, and planned the whole page. The description now says *the part*,
+and to open the skill before planning.
 
 The cases ask for the command rather than run it, so a run needs no project, server or browser: each starts in an
 empty folder, and the agent may only read (`Read`, `Glob`, `Grep`, `Skill`).
@@ -21,9 +29,13 @@ empty folder, and the agent may only read (`Read`, `Glob`, `Grep`, `Skill`).
 Claude Code 2.1.269 or later, from the repository's root:
 
 ```bash
-claude plugin eval . --max-cost-usd 10                      # all of them, 3 runs each, with and without SideShot
+claude plugin eval . --judge-model sonnet --max-cost-usd 10   # all of them, 3 runs each, with and without SideShot
 claude plugin eval . --case pricing-part --runs 1 --ablation none   # one case, once, while you work on it
 ```
+
+`--judge-model sonnet` because the default judge, a small model, once failed a reply in `pricing-part` that met every
+PASS line; Sonnet, given the same case, passed all three. A low score from an `llm` grader is worth reading before it
+is believed: the report keeps the reply it judged.
 
 The first run asks you to trust the folder (`--trust-plugin` says yes for you). Each run is a real session on your own
 plan or API key, which is why CI does not run them; `--max-cost-usd` stops the run if it gets there. The HTML report
