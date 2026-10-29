@@ -62,6 +62,16 @@ describe('the files SKILL.md sends an agent to', () => {
   });
 });
 
+describe('what the docs say to install', () => {
+  it('adds Chromium wherever it adds Playwright, which cannot picture anything without it', () => {
+    for (const path of ['README.md', `${skill}/SKILL.md`, `${skill}/reference.md`, 'CONTRIBUTING.md']) {
+      for (const line of read(path).split('\n').filter((l) => /npm i(nstall)? (-D|-g) playwright/.test(l))) {
+        assert.match(line, /npx playwright install chromium/, `${path}: ${line.trim()}`);
+      }
+    }
+  });
+});
+
 describe('the version', () => {
   const plugin = JSON.parse(read('.claude-plugin/plugin.json'));
   const readme = read('README.md');
@@ -130,6 +140,45 @@ describe('the evals', () => {
       }
     }
   });
+
+  // What a grader should take, and what it should not: a value that only starts like the right one (another port,
+  // another page, another part) is the wrong one.
+  const examples = {
+    'pricing-part/graders/command.md': {
+      takes: [
+        "node ~/.claude/skills/sideshot/scripts/sideshot.mjs --page /pricing --part plans='#plans' \\\n" +
+          '  --before https://example.com --after http://localhost:4321 --mark-changes',
+        'node sideshot.mjs --part "plans=#plans" --page "/pricing" --before "https://example.com/" ' +
+          '--after "http://localhost:4321/"',
+      ],
+      refuses: [
+        'node sideshot.mjs --page /pricing --part plans=#plans --before https://example.com --after http://localhost:43210',
+        'node sideshot.mjs --page /pricing-old --part plans=#plans --before https://example.com --after http://localhost:4321',
+        'node sideshot.mjs --page /pricing --part plans=#plans-old --before https://example.com --after http://localhost:4321',
+        'node sideshot.mjs --page /pricing --part plans=#plans --before https://example.com.evil --after http://localhost:4321',
+      ],
+    },
+    'colour-means-dark/graders/the-header.md': {
+      takes: ['node sideshot.mjs --part header=header --schemes light,dark', 'node sideshot.mjs --part nav="header nav"'],
+      refuses: ['node sideshot.mjs --part top=header-old', 'node sideshot.mjs --part top=headers'],
+    },
+    'colour-means-dark/graders/both-schemes.md': {
+      takes: ['--schemes light,dark', "--schemes 'dark,light' --part x=y"],
+      refuses: ['--schemes light', '--schemes light,dark-ish'],
+    },
+    'prune-asks-first/graders/command.md': {
+      takes: ['node sideshot.mjs --prune --older-than 3', 'node sideshot.mjs --older-than "3" --prune'],
+      refuses: ['node sideshot.mjs --prune --older-than 30', 'node sideshot.mjs --prune --older-than 3.5'],
+    },
+  };
+  for (const [path, { takes, refuses }] of Object.entries(examples)) {
+    it(`grades ${path} on the whole value, not how it starts`, () => {
+      const { pattern, flags } = frontOf(`evals/${path}`);
+      const re = new RegExp(pattern, flags);
+      for (const reply of takes) assert.ok(re.test(reply), `takes: ${reply}`);
+      for (const reply of refuses) assert.ok(!re.test(reply), `refuses: ${reply}`);
+    });
+  }
 
   it('checks that SideShot is what answered, where it should be', () => {
     const fired = (name) =>

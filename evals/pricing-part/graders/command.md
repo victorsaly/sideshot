@@ -1,5 +1,5 @@
 ---
 type: regex
-pattern: '^(?=[\s\S]*sideshot\.mjs)(?=[\s\S]*--page [''"]?/pricing)(?=[\s\S]*--part [''"]?[\w-]+=[''"]?#plans)(?=[\s\S]*--before [''"]?https://example\.com)(?=[\s\S]*--after [''"]?http://localhost:4321)'
+pattern: '^(?=[\s\S]*sideshot\.mjs)(?=[\s\S]*--page [''"]?/pricing/?[''"]?(?![\w./#-]))(?=[\s\S]*--part [''"]?[\w-]+=[''"]?#plans[''"]?(?![\w-]))(?=[\s\S]*--before [''"]?https://example\.com/?[''"]?(?![\w.:/-]))(?=[\s\S]*--after [''"]?http://localhost:4321/?[''"]?(?![\w.:/-]))'
 weight: 2
 ---
