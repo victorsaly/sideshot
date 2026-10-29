@@ -2,6 +2,16 @@
 
 ## 0.5.4 (unreleased)
 
+- **Pictures show in a private repository's pull requests.** The table linked them on `raw.githubusercontent.com`,
+  which answers 404 for a private repository, even to those who can read it. It links them through `github.com` now,
+  which sends a reader on to the picture with their sign-in; on a public repository it ends at the same picture as
+  before. The branch is named in full (`refs/heads/`), so a `--branch` with a slash in it works too.
+- **The GitHub CLI, missing or not signed in, is said before anything is pictured** (exit 2), for `--update-pr` and
+  `--prune`, in place of gh's own error once the pictures were pushed and no table was written.
+- **A refused push is said in a sentence**, with what git said, in place of a stack trace. The checkout is gone
+  and the pictures are kept, for `--reuse`; a prune that is refused takes nothing off.
+- **An icon for the plugin**, SideShot's mark (`docs/assets/mark.png`).
+
 Measured against Anthropic's checklist for skills and the most-starred skill repositories:
 
 - **Evals.** Four cases under `evals/`, run with `claude plugin eval .`. They check that an agent asked in plain words
