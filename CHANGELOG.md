@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.5 (unreleased)
+## 0.5.5 (2026-10-29)
 
 - **The description says what SideShot pictures: the part that changed, not the whole page**, shown first, and
   that the skill is opened before the pictures are planned. An agent asked to "show the reviewers how it looked and
