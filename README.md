@@ -8,9 +8,11 @@
 
 <p align="center"><img src="docs/assets/hero.png" alt="SideShot: the same part of a page before and after a change, on a desk and a phone" width="960" /></p>
 
-<p align="center">Tell your coding agent to <em>sideshot this PR</em>. It works out which page and which parts your change
-touches, pictures them before and after on a desk and a phone (and in dark mode, if colours changed), rings and
-marks what changed, shows you first, then puts the side-by-side table in the pull request. Reviewers see the change instead of imagining it.</p>
+<p align="center"><strong>A diff cannot show a UI change.</strong> Tell your coding agent to
+<em>sideshot this PR</em>. It works out which page and which parts your change touches, pictures them before and after
+on a desk and a phone (and in dark mode, if colours changed), rings and marks what changed, shows you first, then puts
+the side-by-side table in the pull request. Reviewers see the change on desk and phone without checking out the
+branch.</p>
 
 <p align="center"><a href="https://skills.victorsaly.com/sideshot#film"><img src="docs/assets/film.jpg" alt="Watch SideShot in 36 seconds: a film of a pricing change pictured before and after, marked, and put in a pull request" width="720" /></a></p>
 
@@ -118,6 +120,18 @@ Add `--note` and `--mark-changes` and the picture says what changed: a numbered 
 - **Honest about gaps.** A part that is new or removed shows as *(not there)* on one side, and the run says so.
 - **Nothing to compare, said plainly.** A pair the same before and after is left out, and named under the table.
   When nothing is left, nothing is pushed, and the description says why.
+
+### Instead of screenshots by hand
+
+```diff
+- Open the site as it is and your branch, side by side.
+- Picture the part on each: desk and phone, light and dark, before and after. Eight pictures.
+- Crop every pair so it lines up, upload them, and type the table.
+- Do it all again after every review comment.
++ One sentence to your agent. Eight pictures of a small page take about seven seconds.
++ Cropped to the part and lined up, with what changed marked.
++ The table written into the pull request, and replaced, not added to, on the next run.
+```
 
 <a id="what-it-writes"></a>
 
@@ -248,7 +262,7 @@ npm run test:e2e        # pictured for real in Chromium, what draw.mjs marks, an
 npm run lint            # ESLint
 npm run typecheck       # TypeScript checks the JavaScript, nothing is built
 npm run check           # all of the above, as CI runs it on every pull request
-claude plugin eval . --max-cost-usd 10   # whether agents use the skill as SKILL.md says: real sessions, your plan
+claude plugin eval . --judge-model sonnet --max-cost-usd 10   # whether agents use the skill as SKILL.md says
 ```
 
 The evals, what each checks and how to run one cheaply, are in [evals/README.md](evals/README.md).
