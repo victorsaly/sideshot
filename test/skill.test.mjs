@@ -246,6 +246,10 @@ describe('the evals', () => {
         'node sideshot.mjs --page /cart-old --part "b=.checkout button" --before https://example.com --after http://localhost:3000',
         'node sideshot.mjs --page /cart --part "b=.checkout button" --before https://example.com --after http://localhost:30001',
         'node sideshot.mjs --page /cart --part "b=.checkout button" --after http://localhost:3000',
+        // Production and the branch the wrong way round, on the command line or in .sideshot.json.
+        'node sideshot.mjs --page /cart --part "b=.checkout button" --before http://localhost:3000 --after https://example.com',
+        '{ "before": "http://localhost:3000", "after": "https://example.com" } in .sideshot.json\n' +
+          'node sideshot.mjs --page /cart --part "b=.checkout button"',
       ],
     },
   };
