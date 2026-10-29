@@ -98,6 +98,15 @@ describe('the version', () => {
     assert.match(newest, /^## \d+\.\d+\.\d+ \((\d{4}-\d{2}-\d{2}|unreleased)\)$/);
   });
 
+  it('has an icon the plugin directory takes: a square PNG, 512 to 2048 pixels a side', () => {
+    const png = readFileSync(join(root, plugin.icon));
+    assert.ok(png.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex')), `${plugin.icon} is a PNG`);
+    const [width, height] = [png.readUInt32BE(16), png.readUInt32BE(20)];
+    assert.equal(width, height, `${plugin.icon} is ${width}×${height}`);
+    assert.ok(width >= 512 && width <= 2048, `${plugin.icon} is ${width} pixels a side`);
+    assert.ok(png.length < 2 * 1024 * 1024, `${plugin.icon} is under 2 MB`);
+  });
+
   it('is described the same in the plugin and the marketplace', () => {
     const [listed] = JSON.parse(read('.claude-plugin/marketplace.json')).plugins;
     assert.equal(listed.name, plugin.name);
