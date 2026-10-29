@@ -3,6 +3,7 @@ name: sideshot
 description: Before-and-after screenshots for a pull request that changes what people see (a page, a component, a style), on a desk and a phone, optionally in dark mode, with what changed marked, kept on a branch of their own and put in the PR description as a table. Use when opening or updating a PR with visible UI changes, or when asked for before and after pictures, screenshots for review, visual proof of a change, or to "sideshot" a PR.
 license: MIT
 metadata:
+  version: 0.5.4
   homepage: https://github.com/victorsaly/sideshot
 allowed-tools: Bash(node ${CLAUDE_SKILL_DIR}/scripts/*)
 ---
