@@ -27,8 +27,7 @@ body:
     id: version
     attributes:
       label: SideShot version
-      description: In `.claude-plugin/plugin.json`, or `/plugin` in Claude Code.
-      placeholder: 0.5.4
+      description: "`version` at the top of the skill's SKILL.md, wherever it was installed (`/plugin` in Claude Code shows it too)."
     validations:
       required: true
   - type: input

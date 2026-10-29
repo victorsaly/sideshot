@@ -5,14 +5,20 @@
 Measured against Anthropic's checklist for skills and the most-starred skill repositories:
 
 - **Evals.** Four cases under `evals/`, run with `claude plugin eval .`. They check that an agent asked in plain words
-  pictures the part that changed and looks before it publishes, adds dark mode when colours changed, says what
-  pruning takes away and asks first, and leaves SideShot alone for a change nobody can see.
-- **`npm test` checks the skill's own files.** SKILL.md's name, description and length, that its links are there
-  and go one step deep, that the eval cases are ones the runner takes, and that `plugin.json`, the README badge
-  and the newest changelog entry give the same version.
+  pictures the part that changed, on desk and phone, and looks before it publishes; adds dark mode when colours
+  changed; says what pruning takes away and asks first; and leaves SideShot alone for a change nobody can see. Each
+  is judged on the decision, with SideShot and without it, so the difference is what the skill adds; SideShot's own
+  command is checked too. With it, all four pass every run; without it, three do not (`evals/README.md`).
+- **`npm test` checks the skill's own files.** SKILL.md's name, description, length and size, that its links are
+  there and go one step deep, that the eval cases are ones the runner takes and judge fairly, that every install line
+  in the docs adds Chromium, and that `plugin.json`, SKILL.md, the README badge and the newest changelog entry give
+  the same version.
+- **SKILL.md says its version**, so an install with `npx skills add` can tell which one it is.
 - **What each wait is for.** The timings in `sideshot.mjs` are named in one place, `waits`, each with why it is that
   long. They have not changed.
-- **When something goes wrong**, in the README: what each message means and what to do.
+- **A clearer README.** What it needs up front, one place to install, what a part is, what it writes to your
+  repository and who can see it, every option with what it is unless said, and *When something goes wrong*: what
+  each message means and what to do. `reference.md` says which options `.sideshot.json` takes, exactly.
 - **For people and agents working on SideShot**: `CONTRIBUTING.md`, `AGENTS.md` (and `CLAUDE.md`, which reads
   it), issue forms and a pull request checklist.
 

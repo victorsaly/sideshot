@@ -41,13 +41,14 @@ conversation resolved. `main` takes a pull request once CI and CodeQL pass and e
 
 ## Versions and releases
 
-Each pull request that changes the skill is its own release: a fix is a patch (0.5.3), more than that a minor
-(0.6.0). Take the number from what is released, `git fetch --tags && gh release list`, since another pull request
+Each pull request that changes the skill is its own release: a fix is a patch (0.5.3 to 0.5.4), more than that a
+minor (0.5.4 to 0.6.0). Take the number from what is released, `git fetch --tags && gh release list`, since another pull request
 may have shipped since you started.
 
 In the pull request, these say the same version, and `npm test` fails when they do not:
 
 - `"version"` in `.claude-plugin/plugin.json`
+- `version` under `metadata` in `skills/sideshot/SKILL.md`, which is all an install with `npx skills add` has
 - the `version-x.y.z` badge in the README, and its words
 - the newest heading in `CHANGELOG.md`: `## x.y.z (unreleased)`
 
@@ -56,7 +57,7 @@ To release it:
 1. As the pull request's last commit, date the changelog heading: `## x.y.z (YYYY-MM-DD)`.
 2. Merge it with a merge commit, at the commit CI checked: `gh pr merge <n> --merge --match-head-commit <sha>`.
 3. Tag the merge commit: `git tag -a vx.y.z -m "SideShot x.y.z" <merge commit> && git push origin vx.y.z`.
-4. Publish the release, its notes the changelog section: `gh release create vx.y.z --title "SideShot x.y.z"
-   --notes-file notes.md --latest`.
+4. Publish the release, its notes the changelog section for x.y.z (everything under its heading, saved as
+   `notes.md`): `gh release create vx.y.z --title "SideShot x.y.z" --notes-file notes.md --latest`.
 
 A tag that is published is never moved or replaced. If something was missed, it goes out as the next patch.

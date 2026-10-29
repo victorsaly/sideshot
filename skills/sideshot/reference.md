@@ -33,9 +33,10 @@ touch). In `.sideshot.json`, `devices` is a list, or a map of the project's name
 
 ## `.sideshot.json`
 
-Any option, under its own name, at the project's root: `before`, `after`, `page`, `devices`, `schemes`, `click`,
-`setup`, `wait`, `jobs`, `accent`, `markChanges: true`, `watermark: false`, `out`, `branch`. A flag given on the
-command line wins over the file.
+These options, under their own names, at the project's root: `pr`, `before`, `after`, `page`, `devices`, `schemes`,
+`click`, `setup`, `wait`, `jobs`, `accent`, `markChanges: true`, `watermark: false`, `out`, `branch`, `olderThan`.
+Parts and notes are not kept there: they change with every pull request. A flag given on the command line wins over
+the file.
 
 ## What the pictures carry
 

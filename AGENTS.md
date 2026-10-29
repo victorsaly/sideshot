@@ -37,7 +37,8 @@ Change SKILL.md or reference.md, and run the evals too.
 ## Rules
 
 - Write the failing test first, then the fix.
-- One pull request is one release: bump `.claude-plugin/plugin.json`, the README badge and a changelog entry
+- One pull request is one release: bump `.claude-plugin/plugin.json`, SKILL.md's `metadata.version`, the README
+  badge and a changelog entry
   marked `(unreleased)` in the same pull request. `npm test` fails when they disagree. Find the number from what
   is released (`git fetch --tags && gh release list`), not from memory.
 - Never move or replace a published tag; ship a new patch instead.
