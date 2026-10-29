@@ -16,7 +16,7 @@ Measured against Anthropic's checklist for skills and the most-starred skill rep
 - **For people and agents working on SideShot**: `CONTRIBUTING.md`, `AGENTS.md` (and `CLAUDE.md`, which reads
   it), issue forms and a pull request checklist.
 
-## 0.5.3 (unreleased)
+## 0.5.3 (2026-10-29)
 
 From a security and code-standards review of 0.5.0:
 

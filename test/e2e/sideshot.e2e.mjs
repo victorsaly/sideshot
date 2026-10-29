@@ -65,11 +65,11 @@ describe('sideshot.mjs', { concurrency: true }, () => {
 
   it('takes a part and a note named in Playwright\'s own selectors, which the page alone cannot read', async () => {
     const result = await shoot(
-      '11', '--part', "card=.card:has-text('Pro plan')", '--devices', 'desk', '--wait', '0',
+      '18', '--part', "card=.card:has-text('Pro plan')", '--devices', 'desk', '--wait', '0',
       '--note', ".new:has-text('priority')=The badge", '--no-watermark',
     );
     assert.equal(result.status, 0, result.stderr);
-    const files = readdirSync(join(out, '11'));
+    const files = readdirSync(join(out, '18'));
     // Ringed, so drawn on: the plain copy shows the note was found by its selector.
     assert.ok(files.includes('card-desk-after-plain.png'), files.join(', '));
   });
