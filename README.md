@@ -20,12 +20,13 @@ marks what changed, shows you first, then puts the side-by-side table in the pul
   <a href="#start"><strong>Get started</strong></a> &nbsp;·&nbsp;
   <a href="#what-you-get"><strong>What you get</strong></a> &nbsp;·&nbsp;
   <a href="#how-it-works"><strong>How it works</strong></a> &nbsp;·&nbsp;
-  <a href="#options"><strong>Options</strong></a>
+  <a href="#options"><strong>Options</strong></a> &nbsp;·&nbsp;
+  <a href="#when-something-goes-wrong"><strong>When something goes wrong</strong></a>
 </p>
 
 <p align="center">
   <a href="https://skills.sh"><img src="https://img.shields.io/badge/Agent_Skill-Claude_Code_%C2%B7_Codex_%C2%B7_Cursor_%C2%B7_OpenCode-000000?style=flat-square" alt="An Agent Skill, for Claude Code, Codex, Cursor and OpenCode" /></a>
-  <img src="https://img.shields.io/badge/version-0.5.3-000000?style=flat-square" alt="Version 0.5.3" />
+  <img src="https://img.shields.io/badge/version-0.5.4-000000?style=flat-square" alt="Version 0.5.4" />
   <a href="https://github.com/victorsaly/sideshot/actions/workflows/check.yml"><img src="https://img.shields.io/github/actions/workflow/status/victorsaly/sideshot/check.yml?branch=main&style=flat-square&label=check&color=000000" alt="Checks on main" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-000000?style=flat-square" alt="MIT licence" /></a>
 </p>
@@ -40,7 +41,8 @@ One skill, any coding agent that reads [Agent Skills](https://skills.sh):
 npx skills add victorsaly/sideshot -g
 ```
 
-Then, on a branch with a pull request:
+The same line serves Claude Code, Codex, Cursor, OpenCode and the other agents the `skills` command knows: it asks
+which of yours to put it in, or name them with `-a` (`-a '*'` for all). Then, on a branch with a pull request:
 
 ```text
 SideShot this PR: the pricing table changed. Compare it with production, on desk and phone.
@@ -175,6 +177,27 @@ export default async (page, { when, device, scheme }) => {
 
 </details>
 
+<a id="when-something-goes-wrong"></a>
+
+## When something goes wrong
+
+SideShot says what went wrong, and your agent usually acts on it. When you are running the script yourself:
+
+| It says | What to do |
+|---|---|
+| *Nothing answers at http://localhost:…* | Start the dev or preview server first, or give its address with `--after`. |
+| *Playwright is not installed* (exit 2) | `npm i -D playwright && npx playwright install chromium`, or `npm i -g playwright` for a project without Node. |
+| *Not on the page (new or removed): …* | The part is only on one side. Fine when the change adds or removes it; otherwise check `--part`'s selector. |
+| *Could not press … for: …* | What `--click` names is not there on that side, so that side is pictured unpressed. |
+| *The same before and after* (exit 3) | Check that `--after` runs this branch, and that `--page` and `--part` show the change. If it truly does not show there, `--update-pr --reuse` says so in the PR. |
+| A picture of a page still drawing | Give it longer: `--wait 3000`. |
+| It asks for `--pr` | No pull request for this branch yet, or more than one: open it, or name it with `--pr`. |
+| *SideShot publishes only to an origin on GitHub* | `--publish` and `--update-pr` need the repository on GitHub; the pictures are still in `.sideshot/` without them. |
+| The `--prune` push is refused | Someone pushed to the `sideshot` branch since it was read. Run it again. |
+
+Something else? [Open an issue](https://github.com/victorsaly/sideshot/issues/new/choose) with the command you ran
+and what it said.
+
 ## Where it comes from
 
 SideShot grew out of [agentic-blog](https://github.com/victorsaly/agentic-blog), where every pull request that
@@ -187,15 +210,16 @@ The skill needs nothing installed beyond Playwright, in the project it runs in o
 
 ```bash
 npm install && npx playwright install chromium
-npm test                # what it is asked, checked, and the table it writes
+npm test                # what it is asked, checked, the table it writes, and the skill's own files
 npm run test:coverage   # the same, with at least 90% of lib.mjs covered
 npm run test:e2e        # pictured for real in Chromium, what draw.mjs marks, and publishing to a local repo
 npm run lint            # ESLint
 npm run typecheck       # TypeScript checks the JavaScript, nothing is built
 npm run check           # all of the above, as CI runs it on every pull request
+claude plugin eval .    # whether agents use the skill as SKILL.md says: real sessions, on your own plan
 ```
 
-What changed in each version is in [CHANGELOG.md](CHANGELOG.md), and in the
+How to make a change, and release it, is in [CONTRIBUTING.md](CONTRIBUTING.md). What changed in each version is in [CHANGELOG.md](CHANGELOG.md), and in the
 [releases](https://github.com/victorsaly/sideshot/releases).
 
 ## Licence
