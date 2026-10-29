@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.5 (unreleased)
+
+- **The description says what SideShot pictures: the part that changed, not the whole page**, shown first, and
+  that the skill is opened before the pictures are planned. An agent asked to "show the reviewers how it looked and
+  how it looks now" named SideShot from its description in one run of three, never opened it, and planned the whole
+  page; with the new description it opened SideShot and planned the part in five of five.
+- **Three more evals**: two near misses SideShot stays out of (an API change that shows nothing on screen, and one
+  screenshot for the docs) and one ask with no word for pictures it must still take. Seven cases now.
+- **The README says the problem first** (*A diff cannot show a UI change*), what a reviewer is spared, and, as a
+  diff, screenshots by hand beside SideShot. The same words are on skills.victorsaly.com/sideshot.
+
 ## 0.5.4 (2026-10-29)
 
 - **Pictures show in a private repository's pull requests.** The table linked them on `raw.githubusercontent.com`,
