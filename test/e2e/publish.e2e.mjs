@@ -56,13 +56,14 @@ fi
 exec "${realGit}" "$@"
 `,
     );
-    // gh pr view N --json body --jq .body and gh pr edit N --body-file FILE to publish, gh pr list to prune: the
-    // only calls SideShot makes.
+    // gh auth status before anything that needs gh, gh pr view N --json body --jq .body and gh pr edit N
+    // --body-file FILE to publish, gh pr list to prune: the only calls SideShot makes.
     executable(
       join(bin, 'gh'),
       `#!/bin/sh
 echo "$*" >> "${calls}"
 case "$1 $2" in
+  "auth status") exit 0 ;;
   "pr view") cat "${body}" ;;
   "pr edit") cp "$5" "${body}" ;;
   "pr list") case " $* " in *" --head "*) cat "${heads}" ;; *) cat "${prs}" ;; esac ;;
@@ -119,12 +120,12 @@ esac
     const text = readFileSync(body, 'utf8');
     assert.equal(markers(text), 1);
     assert.match(text, /^Fixes the pricing card\.\n\n<!-- sideshot:start -->/);
-    const link = 'https://raw.githubusercontent.com/test-owner/test-repo/sideshot/5/card-desk-after.png';
+    const link = 'https://github.com/test-owner/test-repo/raw/refs/heads/sideshot/5/card-desk-after.png';
     assert.ok(text.includes(`<img src="${link}"`), text);
-    // Bound to origin's repository, whatever gh would pick by itself.
+    // gh asked first whether it is signed in; then bound to origin's repository, whatever gh would pick by itself.
     assert.match(
       readFileSync(calls, 'utf8'),
-      /^pr view 5 --json body --jq \.body --repo test-owner\/test-repo\npr edit 5 --body-file .*body\.md --repo test-owner\/test-repo\n$/,
+      /^auth status --hostname github\.com\npr view 5 --json body --jq \.body --repo test-owner\/test-repo\npr edit 5 --body-file .*body\.md --repo test-owner\/test-repo\n$/,
     );
     // The checkout it used to commit is gone again.
     assert.equal(sh(project, ['worktree', 'list']).split('\n').length, 1);
@@ -253,6 +254,46 @@ esac
       assert.equal(result.status, 1);
       assert.match(result.stderr, /only to an origin on GitHub/);
     }
+  });
+
+  /** A PATH with the git stand-in and, when given, a gh of its own: nothing else, so no real gh is found. */
+  const pathWith = (name, gh) => {
+    const dir = join(place, name);
+    mkdirSync(dir, { recursive: true });
+    executable(join(dir, 'git'), readFileSync(join(place, 'bin', 'git'), 'utf8'));
+    if (gh) executable(join(dir, 'gh'), gh);
+    return { ...process.env, PATH: dir };
+  };
+
+  it('says plainly, before opening anything, when the GitHub CLI is missing or not signed in', async () => {
+    const missing = pathWith('no-gh');
+    const signedOut = pathWith('signed-out', '#!/bin/sh\necho "You are not logged into any GitHub hosts." >&2\nexit 1\n');
+    const cases = [{ using: missing, said: /needs the GitHub CLI: install it/ }, { using: signedOut, said: /signed in: gh auth login/ }];
+    for (const { using, said } of cases) {
+      for (const result of [await publish(['--part', 'card=.card', '--update-pr'], { pr: '10', using }), await prune([], using)]) {
+        assert.equal(result.status, 2, result.stderr);
+        assert.match(result.stderr, said);
+        assert.doesNotMatch(result.stderr, /\n\s+at /, 'no stack trace');
+        assert.doesNotMatch(result.stdout, /Took/);
+      }
+    }
+    assert.ok(!onBranch().some((f) => f.startsWith('10/')));
+  });
+
+  it('says plainly when the push is refused, and leaves no checkout behind', async () => {
+    const hook = join(bare, 'hooks', 'pre-receive');
+    executable(hook, '#!/bin/sh\necho "pushes are closed" >&2\nexit 1\n');
+    try {
+      const result = await publish(['--part', 'card=.card', '--publish'], { pr: '11' });
+      assert.equal(result.status, 1, result.stderr);
+      assert.match(result.stderr, /could not push the pictures to sideshot on origin/);
+      assert.match(result.stderr, /pushes are closed/);
+      assert.doesNotMatch(result.stderr, /\n\s+at /, 'no stack trace');
+      assert.equal(sh(project, ['worktree', 'list']).split('\n').length, 1);
+    } finally {
+      rmSync(hook);
+    }
+    assert.ok(!onBranch().some((f) => f.startsWith('11/')));
   });
 
   it("finds the branch's own pull request when --pr is left out, and never a fork's of the same branch name", async () => {

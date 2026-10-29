@@ -484,7 +484,10 @@ export const nothingTableOf = ({ why, before, after, page }) =>
 /** The before and after table, in Markdown, for the pictures that were taken (files). Pairs the same before and
  * after were not kept, and are named under it. */
 export function tableOf({ parts, chosen, schemes, notes, files, before, after, page, slug, branch, pr, same = [] }) {
-  const url = (file) => `https://raw.githubusercontent.com/${slug}/${branch}/${pr}/${file}`;
+  // Through github.com, not raw.githubusercontent.com: that answers 404 for a private repository, even to those who
+  // can read it, where github.com sends them on with their sign-in. The branch in full (refs/heads/), so one with a
+  // slash in it is not taken for part of the path.
+  const url = (file) => `https://github.com/${slug}/raw/refs/heads/${branch}/${pr}/${file}`;
   const lines = ['## Before and after', ''];
   for (const part of parts) {
     for (const device of chosen) {
