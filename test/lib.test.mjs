@@ -21,6 +21,7 @@ import {
   prOfBranch,
   prFoldersOf,
   pruneOptionsOf,
+  pushOf,
   quietIn,
   reminderOf,
   ringsWithin,
@@ -564,8 +565,40 @@ describe('isPrPush', () => {
       'gh pr list --head feat',
       'node skills/sideshot/scripts/sideshot.mjs --update-pr',
       '',
+      // Separators inside quotes are words, as the shell reads them, not a second command.
+      'echo "remember; git push"',
+      'git commit -m "UI ready && git push"',
+      "git commit -m 'one | git push'",
+      'echo remember\\; git push',
     ])
       assert.equal(isPrPush(command), false, command);
+  });
+  it('still finds the push after a quoted argument, and around a redirect', () => {
+    for (const command of ['git commit -m "Restyle; cards" && git push', 'git push 2>&1 | tail -3', "git commit -m 'a' ; git push"])
+      assert.equal(isPrPush(command), true, command);
+  });
+});
+
+describe('pushOf', () => {
+  it('says where the push was made: the folders cd and git -C move to, in order', () => {
+    assert.deepEqual(pushOf('git push'), { dirs: [], pr: null, repo: null });
+    assert.deepEqual(pushOf('git -C ../site push').dirs, ['../site']);
+    assert.deepEqual(pushOf('cd site; git push').dirs, ['site']);
+    assert.deepEqual(pushOf('cd "my site" && git -C web push -u origin feat').dirs, ['my site', 'web']);
+    // A folder moved to after the push is not where it was made.
+    assert.deepEqual(pushOf('git push && cd elsewhere').dirs, []);
+  });
+  it('says which pull request, when the command names it, and in which repository', () => {
+    assert.deepEqual(pushOf('gh pr ready 12'), { dirs: [], pr: '12', repo: null });
+    assert.equal(pushOf('gh pr ready https://github.com/o/r/pull/12').pr, 'https://github.com/o/r/pull/12');
+    assert.deepEqual(pushOf('gh pr ready --repo o/r 12'), { dirs: [], pr: '12', repo: 'o/r' });
+    assert.equal(pushOf('gh pr create -R o/r --fill').repo, 'o/r');
+    assert.equal(pushOf('gh pr create --repo=o/r --fill').repo, 'o/r');
+    // gh pr create's own arguments are flags and their values, never a pull request.
+    assert.equal(pushOf('gh pr create --title "Pricing" --fill').pr, null);
+  });
+  it('is null for a command that pushes nothing', () => {
+    for (const command of ['git status', 'git push --tags', 'cd site', 'gh pr view 12']) assert.equal(pushOf(command), null, command);
   });
 });
 

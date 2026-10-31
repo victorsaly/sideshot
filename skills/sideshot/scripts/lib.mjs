@@ -533,18 +533,88 @@ export function bodyWith(body, table) {
   return rest === '' ? `${block}\n` : `${rest}\n\n${block}\n`;
 }
 
-/** Whether a command run pushes a branch or opens a pull request (gh pr create, or ready from a draft): after it,
- * the pull request may want pictures. Pushes of tags, and deletions, change no pull request. */
-export function isPrPush(command) {
-  return String(command)
-    .split(/&&|\|\||[;|\n]/)
-    .some((step) => {
-      const words = step.trim().replace(/^(?:\w+=\S*\s+)+/, '');
-      if (/^gh\s+pr\s+(?:create|ready)\b/.test(words)) return true;
-      const push = /^git(?:\s+-[Cc]\s+\S+)*\s+push\b(.*)$/.exec(words);
-      return push !== null && !/(?:^|\s)(?:--tags|--delete|-d)(?:\s|$)|\s:\S/.test(push[1]);
-    });
+/** A shell command's steps (split at &&, ||, ;, |, & and new lines) and each step's words, as the shell reads
+ * them for this: quotes keep what is in them together, and a backslash keeps the character after it. Enough to know
+ * what a command runs, and where; not a shell. */
+function stepsOf(command) {
+  const text = String(command);
+  const steps = [[]];
+  let word = null;
+  let quote = null;
+  const close = () => {
+    if (word !== null) steps.at(-1).push(word);
+    word = null;
+  };
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text[i];
+    if (quote !== null) {
+      if (c === quote) quote = null;
+      else if (c === '\\' && quote === '"' && i + 1 < text.length) word += text[(i += 1)];
+      else word += c;
+    } else if (c === "'" || c === '"') {
+      quote = c;
+      word ??= '';
+    } else if (c === '\\' && i + 1 < text.length) {
+      word = (word ?? '') + text[(i += 1)];
+    } else if (c === '&' && (text[i - 1] === '>' || text[i + 1] === '>')) {
+      // A redirect (2>&1, &>), not a second command.
+      word = (word ?? '') + c;
+    } else if (c === '\n' || c === ';' || c === '|' || c === '&') {
+      close();
+      if (steps.at(-1).length > 0) steps.push([]);
+    } else if (/\s/.test(c)) {
+      close();
+    } else {
+      word = (word ?? '') + c;
+    }
+  }
+  close();
+  return steps.filter((step) => step.length > 0);
 }
+
+/** The value of a flag among a command's words (--repo o/r, -R o/r, --repo=o/r), or null. */
+function flagOf(words, long, short) {
+  for (let i = 0; i < words.length; i += 1) {
+    if ((words[i] === long || words[i] === short) && i + 1 < words.length) return words[i + 1];
+    if (words[i].startsWith(`${long}=`)) return words[i].slice(long.length + 1);
+  }
+  return null;
+}
+
+/** Where a command pushes a branch, or opens a pull request (gh pr create, or ready from a draft), or null when it
+ * does neither: after it, the pull request may want pictures. dirs are the folders cd and git -C moved to before
+ * it, in order, from where the command was run; pr and repo are the pull request and repository, when the command
+ * names them. Pushes of tags, and deletions, change no pull request. */
+export function pushOf(command) {
+  const dirs = [];
+  for (const step of stepsOf(command)) {
+    const [name, ...rest] = step.slice(step.findIndex((w) => !/^\w+=/.test(w)));
+    if (name === 'cd') {
+      dirs.push(rest[0] ?? '~');
+    } else if (name === 'gh' && rest[0] === 'pr' && (rest[1] === 'create' || rest[1] === 'ready')) {
+      const after = rest.slice(2);
+      const repo = flagOf(after, '--repo', '-R');
+      // gh pr ready names the pull request as its one word that is not a flag or a flag's value.
+      const named = after.find((w, i) => !w.startsWith('-') && !['--repo', '-R'].includes(after[i - 1]));
+      const pr = rest[1] === 'ready' ? (named ?? null) : null;
+      return { dirs, pr, repo };
+    } else if (name === 'git') {
+      const here = [...dirs];
+      let i = 0;
+      while (i < rest.length && rest[i].startsWith('-')) {
+        if (rest[i] === '-C') here.push(rest[i + 1]);
+        i += rest[i] === '-C' || rest[i] === '-c' ? 2 : 1;
+      }
+      const args = rest.slice(i + 1);
+      const changesNoPr = args.some((a) => a === '--tags' || a === '--delete' || a === '-d' || a.startsWith(':'));
+      if (rest[i] === 'push' && !changesNoPr) return { dirs: here, pr: null, repo: null };
+    }
+  }
+  return null;
+}
+
+/** Whether a command pushes a branch or opens a pull request: pushOf, said yes or no. */
+export const isPrPush = (command) => pushOf(command) !== null;
 
 // What people see: styles, markup and components, images and fonts, and a theme's settings. Tests and stories of
 // those are for the people working on them, and what is under .github never shows on a page.

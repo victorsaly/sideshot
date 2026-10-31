@@ -9,8 +9,9 @@
 // nothing.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { configOf, isPrPush, quietIn, reminderOf } from './lib.mjs';
+import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { configOf, pushOf, quietIn, reminderOf } from './lib.mjs';
 
 const waits = {
   // gh asks GitHub for the pull request; a reminder that takes longer than this is not worth waiting for.
@@ -23,18 +24,24 @@ const run = (command, args, cwd) =>
 try {
   const input = JSON.parse(readFileSync(0, 'utf8'));
   const command = String(input.tool_input?.command ?? '');
+  const push = pushOf(command);
   // Most commands are not a push, and some people want no reminder: both are let go before git or gh is asked
   // anything.
-  if (isPrPush(command) && !quietIn(process.env)) {
-    const root = run('git', ['rev-parse', '--show-toplevel'], input.cwd || process.cwd());
+  if (push !== null && !quietIn(process.env)) {
+    // Where the push was made: the folders the command moved to (cd, git -C), from where it was run.
+    const here = resolve(input.cwd || process.cwd(), ...push.dirs.map((d) => d.replace(/^~(?=\/|$)/, homedir())));
+    const root = run('git', ['rev-parse', '--show-toplevel'], here);
     let config = {};
     try {
       config = configOf(readFileSync(join(root, '.sideshot.json'), 'utf8'));
     } catch {
       // No .sideshot.json, or one SideShot itself will say is wrong when it runs: remind as for none.
     }
-    const pr = JSON.parse(run('gh', ['pr', 'view', '--json', 'body,baseRefName'], root));
-    const files = run('git', ['diff', '--name-only', `origin/${pr.baseRefName}...HEAD`], root).split('\n').filter(Boolean);
+    // The pull request the command named, else the branch's; its files from GitHub, so a base branch never fetched
+    // here does not matter.
+    const named = [...(push.pr === null ? [] : [push.pr]), ...(push.repo === null ? [] : ['--repo', push.repo])];
+    const pr = JSON.parse(run('gh', ['pr', 'view', ...named, '--json', 'body,files'], root));
+    const files = (pr.files ?? []).map((f) => String(f.path));
     const reminder = reminderOf({ command, config, body: pr.body, files, env: process.env });
     if (reminder)
       process.stdout.write(
