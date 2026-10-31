@@ -41,6 +41,7 @@ describe('the hook', () => {
       const answer = JSON.stringify({ body: 'Restyles the cards.', files: [{ path: 'src/pricing.css' }, { path: 'server/db.ts' }] });
       writeFileSync(join(top, 'bin', 'gh'), `#!/bin/sh\necho "$PWD $@" > '${asked}'\necho '${answer}'\n`);
       chmodSync(join(top, 'bin', 'gh'), 0o755);
+      /** @type {NodeJS.ProcessEnv} */
       const env = { ...process.env, PATH: `${join(top, 'bin')}:${process.env.PATH ?? ''}` };
       delete env.SIDESHOT_REMIND;
 
