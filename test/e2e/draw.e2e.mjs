@@ -210,6 +210,14 @@ describe('draw.mjs', () => {
     assert.ok(dark.length > 0 && dark.every((r) => r.right < 200 && r.top > 90), JSON.stringify(dark));
   });
 
+  it('moves the tag off a small icon, though the icon is a small share of the place', async () => {
+    // One 8 by 8 icon where the tag would sit: under 3% of the place, yet something the picture shows.
+    const spec = { width: 400, height: 180, rects: [[360, 150, 8, 8, '#555555']] };
+    const { png } = await marked(null, spec, { tag: true, scale: 1 });
+    const dark = await page.evaluate(whereOf, { png, colour: tagOnWhite });
+    assert.ok(dark.length > 0 && dark.every((r) => r.right < 200 && r.top > 90), JSON.stringify(dark));
+  });
+
   it('grows the picture and puts the tag below it when every corner holds something', async () => {
     const spec = { width: 400, height: 180, rects: words(0, 0, 400, 180) };
     const { png } = await marked(null, spec, { tag: true, scale: 1 });

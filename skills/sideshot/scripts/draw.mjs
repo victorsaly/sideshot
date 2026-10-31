@@ -212,28 +212,43 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
     const side = x.measureText('Side').width, shot = x.measureText('Shot').width;
     const w = pad * 2 + sq * 1.7 + 6 * t + side + shot, h = pad * 2 + 13 * t;
     // It never covers what the picture shows: it takes the first corner with nothing under it, bottom right
-    // first. Nothing means the place is all but one colour: 97% of it within reach of its commonest colour, so a
-    // flat panel or a thin border may sit under it, but not a word, a control, or a ring or mark already drawn.
-    // When every corner is taken, the picture grows a strip of its own background at the bottom for the tag.
+    // first. Nothing means the place is all but one colour, with no solid patch of another: 97% of it within
+    // reach of its commonest colour, and no spot of another colour six pixels square or more. So a flat panel or
+    // a border up to four pixels thick may sit under it, but not a word, a small icon or control, or a ring or
+    // mark already drawn. When every corner is taken, the picture grows a strip of its own background at the
+    // bottom for the tag.
     const W = c.width, H = c.height, d = x.getImageData(0, 0, W, H).data;
     const at = (px, py) => { const k = (py * W + px) * 4; return [d[k], d[k + 1], d[k + 2]]; };
     const free = (left, top) => {
       if (left < 0 || top < 0 || left + w > W || top + h > H) return false;
+      // Every other pixel of the place, a little past the tag on each side, as a grid.
+      const x0 = Math.max(0, Math.floor(left - gap / 2)), x1 = Math.min(W, left + w + gap / 2);
+      const y0 = Math.max(0, Math.floor(top - gap / 2)), y1 = Math.min(H, top + h + gap / 2);
+      const cols = Math.ceil((x1 - x0) / 2), rows = Math.ceil((y1 - y0) / 2);
+      if (cols <= 0 || rows <= 0) return false;
       const seen = [], counts = new Map();
-      for (let py = Math.max(0, Math.floor(top - gap / 2)); py < Math.min(H, top + h + gap / 2); py += 2) {
-        for (let px = Math.max(0, Math.floor(left - gap / 2)); px < Math.min(W, left + w + gap / 2); px += 2) {
-          const rgb = at(px, py);
+      for (let j = 0; j < rows; j++) {
+        for (let i = 0; i < cols; i++) {
+          const rgb = at(x0 + i * 2, y0 + j * 2);
           seen.push(rgb);
           const key = (rgb[0] >> 4) * 256 + (rgb[1] >> 4) * 16 + (rgb[2] >> 4);
           counts.set(key, (counts.get(key) ?? 0) + 1);
         }
       }
-      if (seen.length === 0) return false;
       let top1 = 0, most = -1;
       for (const [key, n] of counts) if (n > most) { most = n; top1 = key; }
       const base = [(top1 >> 8) * 16 + 8, ((top1 >> 4) & 15) * 16 + 8, (top1 & 15) * 16 + 8];
-      const off = seen.filter(([r, g, bl]) => Math.abs(r - base[0]) + Math.abs(g - base[1]) + Math.abs(bl - base[2]) > 60).length;
-      return off / seen.length < 0.03;
+      const off = seen.map(([r, g, bl]) => Math.abs(r - base[0]) + Math.abs(g - base[1]) + Math.abs(bl - base[2]) > 60);
+      if (off.filter(Boolean).length / seen.length >= 0.03) return false;
+      // A small icon is under 3% of the place and still something shown: a sample off the colour with all eight
+      // of its neighbours off too is a solid patch, which a line up to four pixels thick never makes.
+      const offAt = (i, j) => off[j * cols + i];
+      for (let j = 1; j < rows - 1; j++) {
+        for (let i = 1; i < cols - 1; i++) {
+          if (offAt(i, j) && [-1, 0, 1].every((dj) => [-1, 0, 1].every((di) => offAt(i + di, j + dj)))) return false;
+        }
+      }
+      return true;
     };
     const corners = [
       [W - w - gap, H - h - gap],

@@ -233,6 +233,9 @@ describe('optionsOf', () => {
     ]);
     assert.deepEqual(splitNote("input[value='a=b']=It says a=b"), ["input[value='a=b']", 'It says a=b']);
     assert.deepEqual(splitNote('li:not([data-x=y])=New row'), ['li:not([data-x=y])', 'New row']);
+    // A CSS escape outside quotes, as Tailwind's class names have: the escaped bracket opens nothing.
+    assert.deepEqual(splitNote('#foo\\[bar=Words'), ['#foo\\[bar', 'Words']);
+    assert.deepEqual(splitNote('.w-\\[100px\\]=Wide'), ['.w-\\[100px\\]', 'Wide']);
     assert.deepEqual(splitNote('.plain'), ['.plain', undefined]);
   });
   it('refuses a flag given without its value, rather than falling back to the default', () => {

@@ -46,14 +46,15 @@ const splitOnce = (s) => {
 };
 
 /** A note, "selector=words", split at the first "=" outside brackets and quotes: a selector such as
- * a[href*="skills"] holds "=" of its own, and the words may too. */
+ * a[href*="skills"] holds "=" of its own, and the words may too. A CSS escape (\[ in a Tailwind class name,
+ * \" in a value) is skipped wherever it stands: it opens and closes nothing. */
 export const splitNote = (note) => {
   let depth = 0, quote = '';
   for (let i = 0; i < note.length; i++) {
     const ch = note[i];
-    if (quote) {
-      if (ch === '\\') i++;
-      else if (ch === quote) quote = '';
+    if (ch === '\\') i++;
+    else if (quote) {
+      if (ch === quote) quote = '';
     } else if (ch === '"' || ch === "'") quote = ch;
     else if (ch === '[' || ch === '(') depth++;
     else if ((ch === ']' || ch === ')') && depth > 0) depth--;
