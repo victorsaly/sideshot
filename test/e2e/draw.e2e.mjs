@@ -470,6 +470,47 @@ describe('draw.mjs', () => {
     assert.equal((await marked(card(false), card(true))).whole, false);
   });
 
+  // Seven lines down a part, all recoloured, the middle two wider than the rest: a ring over the middle must not
+  // turn the one box into one round the five lines it left, stopping at the ring's content.
+  const sevenLines = (colour) => ({
+    width: 400,
+    height: 400,
+    rects: [[20, 20, 360, 1, '#999999'], ...[30, 80, 130, 180, 230, 280, 330].map((top, k) => [40, top, k === 2 || k === 3 ? 320 : 200, 20, colour])],
+  });
+
+  it('boxes once round every changed line, those under a ring too', async () => {
+    const ring = { n: 1, x: 40, y: 130, w: 320, h: 70 };
+    const { whole, runs } = await marked(sevenLines('#222222'), sevenLines('#555555'), { rings: [ring], window: [250, 220, 400, 400] });
+    assert.equal(whole, true);
+    // Below the ring, the box's right side stands past the wide lines (to 360), not at the narrow ones (240).
+    assert.ok(runs.some((r) => r.right >= 360 && r.bottom - r.top >= 100), JSON.stringify(runs));
+  });
+
+  it('leaves the one box out under a ring that covers half of it, and then does not say the part is boxed', async () => {
+    const ring = { n: 1, x: 40, y: 80, w: 320, h: 220 };
+    const { whole, changed, runs } = await marked(sevenLines('#222222'), sevenLines('#555555'), { rings: [ring], window: [0, 320, 400, 400] });
+    assert.equal(whole, false);
+    assert.equal(changed, 1, JSON.stringify(runs));
+    // Nothing below the ring: the ring, with its number, says the change, the last line's with the rest.
+    assert.deepEqual(runs, []);
+  });
+
+  it('keeps a box inside the picture when the change reaches its edge, on after and on before', async () => {
+    // A block at the very foot of the picture, recoloured: the box's bottom side is drawn in the last rows, not
+    // off the picture. Looked for in the middle of that side, away from the box's upright sides.
+    const foot = (colour) => ({ width: 400, height: 100, rects: [[40, 20, 200, 10, '#222222'], [40, 60, 200, 40, colour]] });
+    const { changed, runs } = await marked(foot('#222222'), foot('#555555'), { window: [100, 90, 180, 100] });
+    assert.equal(changed, 1);
+    assert.ok(runs.length > 0, JSON.stringify(runs));
+    // The same block taken out: struck on "before" with its bottom side drawn too.
+    const was = foot('#cc3300'), now = { ...was, rects: was.rects.slice(0, 1) };
+    const { gone } = await marked(was, now);
+    assert.equal(gone.length, 1, JSON.stringify(gone));
+    const png = await page.evaluate(strike, { src: await picture(was), boxes: gone, colour: marigold });
+    const under = await page.evaluate(whereOf, { png, colour: marigold, window: [100, 90, 180, 100] });
+    assert.ok(under.length > 0, JSON.stringify(under));
+  });
+
   it('rings a noted element where it sits, in the colour given', async () => {
     const { changed, runs } = await marked(null, card(true), {
       rings: [{ n: 1, x: 40, y: 90, w: 160, h: 20 }],

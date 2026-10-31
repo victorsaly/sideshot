@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.3 (unreleased)
+
+- **A part that differs throughout is boxed round all of it, even under a ring.** The one box was taken over the
+  changes a ring had not covered, so with a ring over the middle of such a part it stopped at the ring's content,
+  its side running down through what the ring marks. Now it goes round every change, and when a ring covers half of
+  it or more, the ring says it and no box is drawn.
+- **A box at the picture's edge keeps its side.** A change reaching the foot or the right of a picture was boxed
+  8 pixels past it, so that side was cut off, on the after picture and on the before one, where what went is struck.
+
 ## 0.6.2 (2026-10-31)
 
 - **The table says which words changed.** Under each pair, the stretches of the part's text that differ, as the
