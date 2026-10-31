@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.2 (unreleased)
+
+- **The table says which words changed.** Under each pair, the stretches of the part's text that differ, as the
+  page shows it: what went struck through, what came in bold, three words round each. A mark can show where a
+  paragraph changed; it cannot name the word. Kept with the run, so `--update-pr --reuse` says it too.
+- **A change under 40 pixels each way is shown again at three times its size**, in an inset beside it, below it,
+  or in a corner, wherever it covers the least of the page, joined to the change by a thin line: a dot that turned
+  green, a radius, an icon, which at a phone's size no one would see. The key under the table names the inset when
+  a picture has one.
+
 ## 0.6.1 (2026-10-31)
 
 - **The before picture shows where what was taken out was**, in a dashed box, where it showed nothing: the

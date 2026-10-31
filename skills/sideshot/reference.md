@@ -46,7 +46,10 @@ there: they change with every pull request. A flag given on the command line win
 - **What `--mark-changes` draws**, said in a line under the table too: a box around what was added or changed, a
   dashed rule on "after" where something was taken out, and a dashed box on "before" where it was. A noted
   element's ring stands in for a box it covers. A part that differs nearly everywhere (a colour, a font, a
-  spacing) is boxed once, and the run and the table say so.
+  spacing) is boxed once, and the run and the table say so. A change under 40 pixels each way is shown again at
+  three times its size, in an inset joined to it by a thin line.
+- **Which words changed**, under each pair in the table: the part's text as the page shows it, what went struck
+  through and what came in bold, three words round each stretch.
 - **One small SideShot tag** to a pair, in the corner of the "after" picture. `--no-watermark` leaves it off.
 - A picture drawn on keeps a plain copy beside it (`*-plain.png`); plain copies and overview sheets are never
   published.

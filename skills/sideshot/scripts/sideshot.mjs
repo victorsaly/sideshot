@@ -53,6 +53,7 @@ import {
   shownOf,
   slugOf,
   swatches,
+  textDiffOf,
   tableOf,
   toPrune,
   usage,
@@ -341,7 +342,7 @@ const below = 80;
 const ringRoom = 28;
 
 /** Opens what the part sits in, lets it settle, and pictures it. Returns where each noted element sits in the
- * picture, in CSS pixels, or null when the page has no such part. */
+ * picture, in CSS pixels, and the part's words as the page shows them, or null when the page has no such part. */
 async function picture(p, selector, file, noted = [], margin = 0) {
   const part = p.locator(selector).first();
   // A part drawn late (once its data comes, or once something is pressed) is given up to --wait to appear before
@@ -397,9 +398,11 @@ async function picture(p, selector, file, noted = [], margin = 0) {
     ]).then(() => undefined),
     waits.images,
   );
+  // The part's words, for the table to say which changed: a mark cannot name a word.
+  const text = await part.evaluate((el) => /** @type {HTMLElement} */ (el).innerText).catch(() => '');
   if (margin === 0) {
     await part.screenshot({ path: file });
-    return [];
+    return { rings: [], text };
   }
   // A ring sits just outside what it marks: with notes, both pictures take the same margin, so no ring or
   // number is cut off and before and after stay the same size.
@@ -426,7 +429,7 @@ async function picture(p, selector, file, noted = [], margin = 0) {
     });
     rings.push({ n: note.n, x: r.x - clip.x, y: r.y - clip.y, w: r.w, h: r.h });
   }
-  return ringsWithin(rings, clip.width, clip.height);
+  return { rings: ringsWithin(rings, clip.width, clip.height), text };
 }
 
 let browser;
@@ -475,14 +478,20 @@ async function shoot({ device, scheme, when, base, part }) {
     // An older picture of a part that is no longer there must not pass for the current one.
     rmSync(join(out, name), { force: true });
     rmSync(join(out, plainOf(name)), { force: true });
-    const rings = await picture(
+    const shot = await picture(
       p,
       part.selector,
       join(out, name),
       when === 'after' ? notes : [],
       notes.length > 0 ? ringRoom : 0,
     );
-    return { name, rings, pressed, said: `${part.name} ${when} on ${label(device.name, scheme)}` };
+    return {
+      name,
+      rings: shot === null ? null : shot.rings,
+      text: shot === null ? null : shot.text,
+      pressed,
+      said: `${part.name} ${when} on ${label(device.name, scheme)}`,
+    };
   } finally {
     await context.close();
   }
@@ -511,6 +520,8 @@ try {
 const resultOf = new Map(taken.map((t) => [t.name, t]));
 const same = [];
 const gone = [];
+// What the part's words say now that they did not, by "after" picture, for the table to say under the pair.
+const texts = {};
 // Each "after" picture's pair, named as the run names it, for what is said of it after it is marked.
 const pairOf = new Map();
 for (const part of parts)
@@ -525,12 +536,15 @@ for (const part of parts)
       else if (was && is && readFileSync(join(out, b)).equals(readFileSync(join(out, a)))) {
         same.push(pair);
         for (const f of [b, a]) rmSync(join(out, f));
+      } else if (was && is) {
+        const lines = textDiffOf(resultOf.get(b).text, resultOf.get(a).text);
+        if (lines.length > 0) texts[a] = lines;
       }
     }
 // Only this run's pictures are finished: one kept from an earlier run (another page) was finished then.
 const pngs = taken.filter((t) => t.rings !== null && existsSync(join(out, t.name))).map((t) => t.name);
 const nothing = pngs.length === 0 ? nothingOf({ same, gone, page }) : null;
-writeFileSync(runFile, `${JSON.stringify({ ...runs, [runKey]: { same, nothing } })}\n`);
+writeFileSync(runFile, `${JSON.stringify({ ...runs, [runKey]: { same, nothing, texts } })}\n`);
 for (const f of readdirSync(out)) if (/-overview(?:-\d+)?\.png$/.test(f)) rmSync(join(out, f));
 const missing = taken.filter((t) => t.rings === null).map((t) => t.said);
 const unpressed = taken.filter((t) => !t.pressed).map((t) => t.said);
@@ -549,7 +563,7 @@ if (nothing !== null) {
   process.exit(3);
 }
 
-let sheets, whole;
+let sheets, whole, loupes;
 try {
   const ringsOf = new Map(taken.filter((t) => t.rings?.length > 0).map((t) => [t.name, t.rings]));
   // Each picture is finished in a browser canvas: what changed is marked, the notes are ringed, the tag goes in
@@ -591,7 +605,7 @@ try {
     });
     if (rings.length > 0 || result.changed > 0) cpSync(join(out, f), join(out, plainOf(f)));
     writeFileSync(join(out, f), Buffer.from(result.png, 'base64'));
-    return compare ? { f, pair, changed: result.changed, gone: result.gone, whole: result.whole } : null;
+    return compare ? { f, pair, changed: result.changed, gone: result.gone, whole: result.whole, loupes: result.loupes } : null;
   });
   // Where something was taken out, the "before" picture is struck there, once every picture is finished, so
   // no two pages write one picture; it keeps a plain copy too, unless a ring already made one.
@@ -603,7 +617,8 @@ try {
   }
   // A part boxed once for differing nearly everywhere is said, here and in the table, and kept for --reuse.
   whole = marked.filter((m) => m !== null && m.whole).map((m) => pairOf.get(m.f));
-  writeFileSync(runFile, `${JSON.stringify({ ...runs, [runKey]: { same, nothing, whole } })}\n`);
+  loupes = marked.some((m) => m !== null && m.loupes > 0);
+  writeFileSync(runFile, `${JSON.stringify({ ...runs, [runKey]: { same, nothing, whole, texts, loupes } })}\n`);
 
   // The overview sheets, to look over in one image or a few instead of every picture one by one.
   sheets = sheetsOf({ parts, chosen, schemes, files: new Set(pngs) });
@@ -639,11 +654,11 @@ try {
   await browser.close();
 }
 // Every picture kept for the pull request, from this run and earlier ones (another page), goes to its folder.
-if (publish) publishing(readdirSync(out).filter(isPicture), { same, nothing: null, whole });
+if (publish) publishing(readdirSync(out).filter(isPicture), { same, nothing: null, whole, texts, loupes });
 
 /** The pictures pushed to their own branch, and the table made of them: printed, or put in the description. With
  * nothing to compare, nothing is pushed, and the description says so, and why. */
-function publishing(pictures, { same, nothing, whole = [] }) {
+function publishing(pictures, { same, nothing, whole = [], texts = {}, loupes = false }) {
   if (nothing === null) {
     // A refused push is said once the checkout is gone, so none is left behind, and before any table is written.
     let refused = null;
@@ -690,7 +705,7 @@ function publishing(pictures, { same, nothing, whole = [] }) {
   const files = new Set(readdirSync(out));
   const table =
     nothing === null
-      ? tableOf({ parts, chosen, schemes, notes, files, before, after, page, slug, branch, pr, same, markChanges, whole })
+      ? tableOf({ parts, chosen, schemes, notes, files, before, after, page, slug, branch, pr, same, markChanges, whole, texts, loupes })
       : nothingTableOf({ why: nothing, before, after, page });
   writeFileSync(join(out, 'table.md'), `${table}\n`);
 

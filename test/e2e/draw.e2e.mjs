@@ -32,8 +32,9 @@ const pictureOf = ({ width, height, rects }) => {
   return c.toDataURL('image/png');
 };
 
-/** In the page: where a colour shows in a PNG, as runs of rows, each with the columns it spans. */
-const whereOf = async ({ png, colour }) => {
+/** In the page: where a colour shows in a PNG, as runs of rows, each with the columns it spans; within a window
+ * ([left, top, right, bottom]) when one is given, to tell one mark from another. */
+const whereOf = async ({ png, colour, window = null }) => {
   const img = await new Promise((ok) => {
     const i = new Image();
     i.onload = () => ok(i);
@@ -44,11 +45,12 @@ const whereOf = async ({ png, colour }) => {
   x.drawImage(img, 0, 0);
   const d = x.getImageData(0, 0, img.width, img.height).data;
   const want = [1, 3, 5].map((k) => parseInt(colour.slice(k, k + 2), 16));
+  const [wx0, wy0, wx1, wy1] = window ?? [0, 0, img.width, img.height];
   const runs = [];
   let run = null;
-  for (let y = 0; y < img.height; y++) {
+  for (let y = wy0; y < wy1; y++) {
     let left = -1, right = -1;
-    for (let xx = 0; xx < img.width; xx++) {
+    for (let xx = wx0; xx < wx1; xx++) {
       const k = (y * img.width + xx) * 4;
       if (Math.abs(d[k] - want[0]) + Math.abs(d[k + 1] - want[1]) + Math.abs(d[k + 2] - want[2]) < 40) {
         if (left === -1) left = xx;
@@ -108,7 +110,7 @@ describe('draw.mjs', () => {
       tag: false,
       ...more,
     });
-    return { ...result, runs: await page.evaluate(whereOf, { png: result.png, colour: more.colour ?? marigold }) };
+    return { ...result, runs: await page.evaluate(whereOf, { png: result.png, colour: more.colour ?? marigold, window: more.window ?? null }) };
   };
 
   it('marks nothing when nothing changed', async () => {
@@ -160,13 +162,16 @@ describe('draw.mjs', () => {
     assert.ok(runs.length === 1 && runs[0].left >= 26 && runs[0].right < 160, JSON.stringify(runs));
   });
 
+  // A dot beside a line of words, on the same rows, with blank page under them.
+  const dotted = (dot) => ({
+    width: 400,
+    height: 200,
+    rects: [[20, 20, 360, 1, '#999999'], [40, 50, 10, 10, dot], [60, 50, 240, 10, '#222222']],
+  });
+
   it('boxes a dot that changed colour beside a line of text, not the line', async () => {
-    const line = (dot) => ({
-      width: 400,
-      height: 100,
-      rects: [[20, 20, 360, 1, '#999999'], [40, 50, 10, 10, dot], [60, 50, 240, 10, '#222222']],
-    });
-    const { changed, runs } = await marked(line('#9a9a9a'), line('#1f9d55'));
+    // Looked at down to the line's foot: the inset for so small a change sits below, with its own test.
+    const { changed, runs } = await marked(dotted('#9a9a9a'), dotted('#1f9d55'), { window: [0, 0, 400, 62] });
     assert.equal(changed, 1, JSON.stringify(runs));
     assert.equal(runs.length, 1, JSON.stringify(runs));
     // The dot is 40 to 50 across; the box sits a few pixels outside it, short of the words at 60.
@@ -400,6 +405,47 @@ describe('draw.mjs', () => {
     assert.equal(whole, true);
     assert.equal(changed, 2, JSON.stringify(runs));
     assert.ok(runs.some((r) => r.left >= 290 && r.bottom - r.top <= 8), JSON.stringify(runs));
+  });
+
+  it('shows a change under 40 pixels each way at 3x, in an inset clear of it, and says so', async () => {
+    // Looked at below the line: the inset, three times the dot and its surround, in the blank page there, and
+    // nothing of it on the words.
+    const { changed, loupes, runs } = await marked(dotted('#9a9a9a'), dotted('#1f9d55'), { window: [0, 70, 400, 200] });
+    assert.equal(changed, 1, JSON.stringify(runs));
+    assert.equal(loupes, 1);
+    const inset = runs.find((r) => r.right - r.left >= 70 && r.bottom - r.top >= 70);
+    assert.ok(inset, JSON.stringify(runs));
+    const onWords = await page.evaluate(whereOf, { png: (await marked(dotted('#9a9a9a'), dotted('#1f9d55'))).png, colour: marigold, window: [70, 44, 310, 66] });
+    assert.deepEqual(onWords, []);
+    assert.equal((await marked(card(false), card(true))).loupes, 0);
+  });
+
+  it('draws no inset where none fits clear of the change, and counts none', async () => {
+    // A picture as low as a button: the inset, three times the dot and its surround, has nowhere to go.
+    const low = (dot) => ({ width: 400, height: 40, rects: [[40, 15, 10, 10, dot], [60, 15, 240, 10, '#222222']] });
+    const { changed, loupes, insets, runs } = await marked(low('#9a9a9a'), low('#1f9d55'));
+    assert.equal(changed, 1, JSON.stringify(runs));
+    assert.equal(loupes, 0);
+    assert.deepEqual(insets, []);
+    assert.ok(runs.every((r) => r.right <= 64), JSON.stringify(runs));
+  });
+
+  it('keeps two insets apart, inside the picture, and off every change', async () => {
+    // Two dots on two lines close together, both changed (on one line they would be one box): the inset below
+    // the first is where the second's would go.
+    const pair = (a, b) => ({
+      width: 400,
+      height: 200,
+      rects: [[40, 50, 10, 10, a], [60, 50, 220, 10, '#222222'], [40, 70, 10, 10, b], [60, 70, 220, 10, '#222222']],
+    });
+    const { loupes, insets } = await marked(pair('#9a9a9a', '#9a9a9a'), pair('#1f9d55', '#cc3300'));
+    assert.equal(loupes, 2, JSON.stringify(insets));
+    const apart = (p, q) => p[2] <= q[0] || q[2] <= p[0] || p[3] <= q[1] || q[3] <= p[1];
+    assert.ok(apart(insets[0], insets[1]), JSON.stringify(insets));
+    for (const [l, t, r, b] of insets) {
+      assert.ok(l >= 0 && t >= 0 && r <= 400 && b <= 200, JSON.stringify(insets));
+      for (const dot of [[40, 50, 50, 60], [40, 70, 50, 80]]) assert.ok(apart([l, t, r, b], dot), JSON.stringify(insets));
+    }
   });
 
   it('leaves a change box out from under a ring that covers it, and still counts the change', async () => {
