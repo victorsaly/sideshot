@@ -15,8 +15,8 @@
   an "=" of their own.
 - **The SideShot tag never covers what the picture shows** (#14). It sat bottom right whatever was there, so on a
   footer it covered "Privacy policy". It takes the first corner that is all but one colour now (bottom right, then
-  bottom left, top right, top left), never a word, a control, a small icon or a mark; when every corner holds something, the
-  after picture grows a strip of its own background at the bottom and the tag sits there.
+  bottom left, top right, top left), never a word, a control, a small icon or a mark; when every corner holds
+  something, the after picture grows a strip of its own background at the bottom and the tag sits there.
 
 ## 0.5.7 (2026-10-31)
 
