@@ -43,6 +43,10 @@ there: they change with every pull request. A flag given on the command line win
 - **One marking colour.** Rings and change marks are marigold unless the page is close to it; then the script
   picks magenta, cyan, violet or lime, whichever the pictures use least, and says so. `--accent cyan` or
   `--accent "#ff5a1f"` pins one.
+- **What `--mark-changes` draws**, said in a line under the table too: a box around what was added or changed, a
+  dashed rule on "after" where something was taken out, and a dashed box on "before" where it was. A noted
+  element's ring stands in for a box it covers. A part that differs nearly everywhere (a colour, a font, a
+  spacing) is boxed once, and the run and the table say so.
 - **One small SideShot tag** to a pair, in the corner of the "after" picture. `--no-watermark` leaves it off.
 - A picture drawn on keeps a plain copy beside it (`*-plain.png`); plain copies and overview sheets are never
   published.

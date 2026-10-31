@@ -28,7 +28,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { finish, pickAccent, sheet } from './draw.mjs';
+import { finish, pickAccent, sheet, strike } from './draw.mjs';
 import {
   UsageError,
   bodyWith,
@@ -511,11 +511,14 @@ try {
 const resultOf = new Map(taken.map((t) => [t.name, t]));
 const same = [];
 const gone = [];
+// Each "after" picture's pair, named as the run names it, for what is said of it after it is marked.
+const pairOf = new Map();
 for (const part of parts)
   for (const device of chosen)
     for (const scheme of schemes) {
       const [b, a] = ['before', 'after'].map((when) => pictureName(part.name, device.name, scheme, when));
       const pair = `${part.name} on ${label(device.name, scheme)}`;
+      pairOf.set(a, pair);
       const was = resultOf.get(b).rings !== null;
       const is = resultOf.get(a).rings !== null;
       if (!was && !is) gone.push(pair);
@@ -546,7 +549,7 @@ if (nothing !== null) {
   process.exit(3);
 }
 
-let sheets;
+let sheets, whole;
 try {
   const ringsOf = new Map(taken.filter((t) => t.rings?.length > 0).map((t) => [t.name, t.rings]));
   // Each picture is finished in a browser canvas: what changed is marked, the notes are ringed, the tag goes in
@@ -588,8 +591,19 @@ try {
     });
     if (rings.length > 0 || result.changed > 0) cpSync(join(out, f), join(out, plainOf(f)));
     writeFileSync(join(out, f), Buffer.from(result.png, 'base64'));
-    return compare ? { f, changed: result.changed } : null;
+    return compare ? { f, pair, changed: result.changed, gone: result.gone, whole: result.whole } : null;
   });
+  // Where something was taken out, the "before" picture is struck there, once every picture is finished, so
+  // no two pages write one picture; it keeps a plain copy too, unless a ring already made one.
+  for (const m of marked) {
+    if (m === null || m.gone.length === 0) continue;
+    if (!existsSync(join(out, plainOf(m.pair)))) cpSync(join(out, m.pair), join(out, plainOf(m.pair)));
+    const png = await inPage(strike, { src: dataOf(m.pair), boxes: m.gone, colour });
+    writeFileSync(join(out, m.pair), Buffer.from(png, 'base64'));
+  }
+  // A part boxed once for differing nearly everywhere is said, here and in the table, and kept for --reuse.
+  whole = marked.filter((m) => m !== null && m.whole).map((m) => pairOf.get(m.f));
+  writeFileSync(runFile, `${JSON.stringify({ ...runs, [runKey]: { same, nothing, whole } })}\n`);
 
   // The overview sheets, to look over in one image or a few instead of every picture one by one.
   sheets = sheetsOf({ parts, chosen, schemes, files: new Set(pngs) });
@@ -617,17 +631,19 @@ try {
       `Marked ${String(areas)} changed area(s) on ${String(compared.length - none.length)} of ` +
         `${String(compared.length)} after pictures${none.length > 0 ? `; nothing changed on ${none.join(', ')}` : ''}.`,
     );
+    if (whole.length > 0)
+      console.info(`Most of the part differs on ${whole.join(', ')}: boxed once, likely a style change.`);
   }
   sayGaps();
 } finally {
   await browser.close();
 }
 // Every picture kept for the pull request, from this run and earlier ones (another page), goes to its folder.
-if (publish) publishing(readdirSync(out).filter(isPicture), { same, nothing: null });
+if (publish) publishing(readdirSync(out).filter(isPicture), { same, nothing: null, whole });
 
 /** The pictures pushed to their own branch, and the table made of them: printed, or put in the description. With
  * nothing to compare, nothing is pushed, and the description says so, and why. */
-function publishing(pictures, { same, nothing }) {
+function publishing(pictures, { same, nothing, whole = [] }) {
   if (nothing === null) {
     // A refused push is said once the checkout is gone, so none is left behind, and before any table is written.
     let refused = null;
@@ -674,7 +690,7 @@ function publishing(pictures, { same, nothing }) {
   const files = new Set(readdirSync(out));
   const table =
     nothing === null
-      ? tableOf({ parts, chosen, schemes, notes, files, before, after, page, slug, branch, pr, same })
+      ? tableOf({ parts, chosen, schemes, notes, files, before, after, page, slug, branch, pr, same, markChanges, whole })
       : nothingTableOf({ why: nothing, before, after, page });
   writeFileSync(join(out, 'table.md'), `${table}\n`);
 

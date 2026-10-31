@@ -390,6 +390,16 @@ describe('tableOf', () => {
     assert.ok(t.includes('<sub>The same before and after, so not shown: hero on phone, hero on phone-dark.</sub>'), t);
     assert.doesNotMatch(table(['hero-desk-after.png']), /The same before and after/);
   });
+  it('says what the marks mean, only when changes are marked', () => {
+    const t = table(['hero-desk-after.png'], { markChanges: true });
+    assert.ok(t.includes('<sub>Boxed: added or changed · dashed rule: taken out · dashed box on before: where it was.</sub>'), t);
+    assert.doesNotMatch(table(['hero-desk-after.png']), /Boxed:/);
+  });
+  it('says where most of the part differs, boxed once, as a style change', () => {
+    const t = table(['hero-desk-after.png'], { markChanges: true, whole: ['hero on desk', 'hero on phone'] });
+    assert.ok(t.includes('<sub>Most of the part differs on hero on desk, hero on phone, so it is boxed once: likely a style change (colour, font, spacing).</sub>'), t);
+    assert.doesNotMatch(table(['hero-desk-after.png'], { markChanges: true }), /Most of the part/);
+  });
   it('lists the notes and where before and after came from', () => {
     const t = table(['hero-desk-after.png']);
     assert.match(t, /\*\*What changed\*\*\n\n1\. Bigger button/);
@@ -541,10 +551,11 @@ describe('runsOf and runOf', () => {
   });
   it('gives a run what it found, or nothing found when what is kept is not in that shape', () => {
     const runs = { a: { same: ['x'], nothing: null }, b: { same: [], nothing: 'Nothing to compare.' } };
-    assert.deepEqual(runOf(runs, 'a'), { same: ['x'], nothing: null });
-    assert.deepEqual(runOf(runs, 'b'), { same: [], nothing: 'Nothing to compare.' });
-    const none = { same: [], nothing: null };
-    for (const kept of [undefined, null, 'x', { same: 'x' }, { same: [1] }, { same: [], nothing: 4 }])
+    assert.deepEqual(runOf(runs, 'a'), { same: ['x'], nothing: null, whole: [] });
+    assert.deepEqual(runOf(runs, 'b'), { same: [], nothing: 'Nothing to compare.', whole: [] });
+    assert.deepEqual(runOf({ c: { same: [], nothing: null, whole: ['y'] } }, 'c'), { same: [], nothing: null, whole: ['y'] });
+    const none = { same: [], nothing: null, whole: [] };
+    for (const kept of [undefined, null, 'x', { same: 'x' }, { same: [1] }, { same: [], nothing: 4 }, { same: [], nothing: null, whole: 'y' }])
       assert.deepEqual(runOf({ k: kept }, 'k'), none, JSON.stringify(kept));
     assert.deepEqual(runOf({}, '__proto__'), none);
   });

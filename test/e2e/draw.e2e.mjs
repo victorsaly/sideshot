@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import { chromium } from 'playwright';
-import { finish, pickAccent } from '../../skills/sideshot/scripts/draw.mjs';
+import { finish, pickAccent, strike } from '../../skills/sideshot/scripts/draw.mjs';
 
 const marigold = '#ffc400';
 // The tag's ink, #111111 at 92%, as it shows on white.
@@ -17,7 +17,15 @@ const pictureOf = ({ width, height, rects }) => {
   const x = c.getContext('2d');
   x.fillStyle = '#ffffff';
   x.fillRect(0, 0, width, height);
-  for (const [left, top, w, h, colour] of rects) {
+  for (const [left, top, w, h, colour, radius] of rects) {
+    if (radius) {
+      x.strokeStyle = colour;
+      x.lineWidth = 4;
+      x.beginPath();
+      x.roundRect(left, top, w, h, radius);
+      x.stroke();
+      continue;
+    }
     x.fillStyle = colour;
     x.fillRect(left, top, w, h);
   }
@@ -312,6 +320,108 @@ describe('draw.mjs', () => {
     const { changed, runs } = await marked(was, now);
     assert.ok(changed >= 1);
     assert.ok(runs.length >= 1 && runs.every((r) => r.bottom - r.top <= 8), JSON.stringify(runs));
+  });
+
+  it('rules where a block at the end was, not at the foot of the picture, when blank page follows it', async () => {
+    // The block at 70 to 90 goes; the blank page under it, 50 rows, is as blank as the 20 above it were, so what
+    // lines up could be either. The rule belongs at 70, where the block stood.
+    const was = { width: 400, height: 140, rects: [[40, 30, 200, 20, '#222222'], [40, 70, 200, 20, '#cc3300']] };
+    const now = { width: 400, height: 140, rects: [[40, 30, 200, 20, '#222222']] };
+    const { changed, runs } = await marked(was, now);
+    assert.equal(changed, 1, JSON.stringify(runs));
+    assert.ok(runs.length === 1 && runs[0].top >= 56 && runs[0].bottom <= 72, JSON.stringify(runs));
+  });
+
+  // A card drawn as a page draws it, a stroked border with rounded corners, given a block inside that makes it
+  // taller: the corners are antialiased again at the new height, a little differently, which is not a change.
+  const rounded = (block) => ({
+    width: 400,
+    height: 200,
+    rects: [[20, 20, 360, block ? 140 : 100, '#111111', 24], [40, 50, 200, 20, '#3355aa'], ...(block ? [[40, 90, 160, 20, '#00aa77']] : [])],
+  });
+
+  it('marks the block added to a rounded card, and not the corners drawn again at the new height', async () => {
+    const { changed, runs } = await marked(rounded(false), rounded(true));
+    assert.equal(changed, 1, JSON.stringify(runs));
+    assert.ok(runs.every((r) => r.top >= 76 && r.bottom <= 124), JSON.stringify(runs));
+  });
+
+  it('says where on the before picture what was taken out was, and strikes it there', async () => {
+    const was = { width: 400, height: 140, rects: [[40, 30, 200, 20, '#222222'], [40, 70, 200, 20, '#cc3300']] };
+    const now = { width: 400, height: 140, rects: [[40, 30, 200, 20, '#222222']] };
+    const { changed, gone } = await marked(was, now);
+    assert.equal(changed, 1);
+    assert.equal(gone.length, 1, JSON.stringify(gone));
+    const [[l, t, r, b]] = gone;
+    assert.ok(l >= 36 && t >= 66 && r <= 244 && b <= 94, JSON.stringify(gone));
+    const png = await page.evaluate(strike, { src: await picture(was), boxes: gone, colour: marigold });
+    const runs = await page.evaluate(whereOf, { png, colour: marigold });
+    assert.ok(runs.length >= 1, JSON.stringify(runs));
+    assert.ok(runs.every((r) => r.top >= 56 && r.bottom <= 104 && r.left >= 26 && r.right <= 254), JSON.stringify(runs));
+    const { gone: none } = await marked(now, now);
+    assert.deepEqual(none, []);
+  });
+
+  it('strikes nothing on before for blank page that was only cropped away', async () => {
+    const was = { width: 400, height: 140, rects: [[40, 30, 200, 20, '#222222']] };
+    const now = { width: 400, height: 50, rects: [[40, 30, 200, 20, '#222222']] };
+    const { changed, gone } = await marked(was, now);
+    assert.equal(changed, 0);
+    assert.deepEqual(gone, []);
+  });
+
+  it('strikes on before the part of a solid block that got shorter', async () => {
+    const was = { width: 400, height: 140, rects: [[40, 30, 200, 20, '#3355aa']] };
+    const now = { width: 400, height: 140, rects: [[40, 30, 200, 10, '#3355aa']] };
+    const { changed, gone } = await marked(was, now);
+    assert.equal(changed, 1);
+    assert.equal(gone.length, 1, JSON.stringify(gone));
+    const [[, t, , b]] = gone;
+    assert.ok(t >= 30 && b <= 50, JSON.stringify(gone));
+  });
+
+  it('strikes on before a block beyond the width of an after picture that got narrower', async () => {
+    const was = { width: 400, height: 80, rects: [[40, 30, 200, 20, '#222222'], [260, 30, 100, 20, '#cc3300']] };
+    const now = { width: 240, height: 80, rects: [[40, 30, 200, 20, '#222222']] };
+    const { gone } = await marked(was, now);
+    assert.equal(gone.length, 1, JSON.stringify(gone));
+    assert.ok(gone[0][0] >= 250 && gone[0][2] <= 370, JSON.stringify(gone));
+  });
+
+  it('keeps a rule for what was taken out beside a part boxed once', async () => {
+    // Four blocks down the left recoloured, and a block on the right, in a column of its own and below them, taken
+    // out: its rule lands under the one box, in rows of its own.
+    const page = (colour, right) => ({
+      width: 400,
+      height: 260,
+      rects: [...[30, 80, 130, 180].map((top) => [40, top, 200, 20, colour]), ...(right ? [[300, 230, 80, 20, '#cc3300']] : [])],
+    });
+    const { changed, whole, runs } = await marked(page('#222222', true), page('#555555', false));
+    assert.equal(whole, true);
+    assert.equal(changed, 2, JSON.stringify(runs));
+    assert.ok(runs.some((r) => r.left >= 290 && r.bottom - r.top <= 8), JSON.stringify(runs));
+  });
+
+  it('leaves a change box out from under a ring that covers it, and still counts the change', async () => {
+    const ring = { n: 1, x: 40, y: 90, w: 160, h: 20 };
+    const withBefore = await marked(card(false), card(true), { rings: [ring] });
+    const ringOnly = await marked(null, card(true), { rings: [ring] });
+    assert.equal(withBefore.changed, 1);
+    assert.equal(withBefore.png, ringOnly.png);
+  });
+
+  it('boxes once, and says so, when most of the part differs', async () => {
+    const blocks = (colour) => ({
+      width: 400,
+      height: 300,
+      rects: [[20, 20, 360, 1, '#999999'], ...[30, 80, 130, 180, 230].map((top) => [40, top, 200, 20, colour])],
+    });
+    const { changed, whole, runs } = await marked(blocks('#222222'), blocks('#555555'));
+    assert.equal(whole, true);
+    assert.equal(changed, 1, JSON.stringify(runs));
+    assert.equal(runs.length, 1, JSON.stringify(runs));
+    assert.ok(runs[0].top < 30 && runs[0].bottom > 250, JSON.stringify(runs));
+    assert.equal((await marked(card(false), card(true))).whole, false);
   });
 
   it('rings a noted element where it sits, in the colour given', async () => {
