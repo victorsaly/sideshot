@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.6.1 (unreleased)
+## 0.6.1 (2026-10-31)
 
 - **The before picture shows where what was taken out was**, in a dashed box, where it showed nothing: the
   reviewer no longer hunts for the paragraph the rule on the after picture stands for. It keeps a plain copy too.
