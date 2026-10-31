@@ -10,6 +10,7 @@ import {
   isBranchName,
   isPicture,
   label,
+  splitNote,
   markers,
   nothingOf,
   nothingTableOf,
@@ -225,6 +226,14 @@ describe('optionsOf', () => {
       { n: 1, selector: '.a', text: 'x=y' },
       { n: 2, selector: '.b', text: '' },
     ]);
+  });
+  it('splits a note at the first = outside brackets and quotes, so a selector may hold its own', () => {
+    assert.deepEqual(asked('--note', '.nav a[href*="skills"]=Skills joins the header').notes, [
+      { n: 1, selector: '.nav a[href*="skills"]', text: 'Skills joins the header' },
+    ]);
+    assert.deepEqual(splitNote("input[value='a=b']=It says a=b"), ["input[value='a=b']", 'It says a=b']);
+    assert.deepEqual(splitNote('li:not([data-x=y])=New row'), ['li:not([data-x=y])', 'New row']);
+    assert.deepEqual(splitNote('.plain'), ['.plain', undefined]);
   });
   it('refuses a flag given without its value, rather than falling back to the default', () => {
     refused([...base, '--branch'], /--branch needs a value/);

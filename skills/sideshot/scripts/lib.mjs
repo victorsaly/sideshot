@@ -45,6 +45,23 @@ const splitOnce = (s) => {
   return i === -1 ? [s, undefined] : [s.slice(0, i), s.slice(i + 1)];
 };
 
+/** A note, "selector=words", split at the first "=" outside brackets and quotes: a selector such as
+ * a[href*="skills"] holds "=" of its own, and the words may too. */
+export const splitNote = (note) => {
+  let depth = 0, quote = '';
+  for (let i = 0; i < note.length; i++) {
+    const ch = note[i];
+    if (quote) {
+      if (ch === '\\') i++;
+      else if (ch === quote) quote = '';
+    } else if (ch === '"' || ch === "'") quote = ch;
+    else if (ch === '[' || ch === '(') depth++;
+    else if ((ch === ']' || ch === ')') && depth > 0) depth--;
+    else if (ch === '=' && depth === 0) return [note.slice(0, i), note.slice(i + 1)];
+  }
+  return [note, undefined];
+};
+
 /** "phone", "1440x900", or "pixel=412x915:mobile"; null when the size cannot be read. */
 export function deviceOf(spec) {
   const [given, sized] = splitOnce(String(spec));
@@ -242,7 +259,7 @@ export function optionsOf(args, config = {}) {
     parts,
     // What changed, said on the picture: a numbered ring around each noted element in the "after" picture.
     notes: all('--note').map((note, i) => {
-      const [selector, text = ''] = splitOnce(note);
+      const [selector, text = ''] = splitNote(note);
       return { n: i + 1, selector, text };
     }),
     accent: accentOf(one('--accent', 'accent', 'auto')),

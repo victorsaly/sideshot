@@ -202,27 +202,71 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
     x.textAlign = 'center'; x.textBaseline = 'middle';
     x.fillText(String(r.n), cx, cy + s);
   }
+  let done = c;
   if (tag) {
     // The tag is SideShot's own and looks the same on every project: the mark (before in paper, after in
-    // marigold) and the name, Side in paper and Shot in marigold, on ink, in the bottom right corner.
+    // marigold) and the name, Side in paper and Shot in marigold, on ink.
     // Sized by the picture's pixel density, not its width, so it reads the same on a phone as on a desk.
-    const t = scale, pad = 8 * t, sq = 11 * t;
+    const t = scale, pad = 8 * t, sq = 11 * t, gap = 10 * t;
     x.font = `700 ${13 * t}px system-ui, -apple-system, sans-serif`;
-    x.textAlign = 'left'; x.textBaseline = 'middle';
     const side = x.measureText('Side').width, shot = x.measureText('Shot').width;
     const w = pad * 2 + sq * 1.7 + 6 * t + side + shot, h = pad * 2 + 13 * t;
-    const left = b.width - w - 10 * t, top = b.height - h - 10 * t;
-    x.globalAlpha = 0.92; x.fillStyle = '#111111';
-    x.beginPath(); x.roundRect(left, top, w, h, 6 * t); x.fill();
-    x.globalAlpha = 1;
+    // It never covers what the picture shows: it takes the first corner with nothing under it, bottom right
+    // first. Nothing means the place is all but one colour: 97% of it within reach of its commonest colour, so a
+    // flat panel or a thin border may sit under it, but not a word, a control, or a ring or mark already drawn.
+    // When every corner is taken, the picture grows a strip of its own background at the bottom for the tag.
+    const W = c.width, H = c.height, d = x.getImageData(0, 0, W, H).data;
+    const at = (px, py) => { const k = (py * W + px) * 4; return [d[k], d[k + 1], d[k + 2]]; };
+    const free = (left, top) => {
+      if (left < 0 || top < 0 || left + w > W || top + h > H) return false;
+      const seen = [], counts = new Map();
+      for (let py = Math.max(0, Math.floor(top - gap / 2)); py < Math.min(H, top + h + gap / 2); py += 2) {
+        for (let px = Math.max(0, Math.floor(left - gap / 2)); px < Math.min(W, left + w + gap / 2); px += 2) {
+          const rgb = at(px, py);
+          seen.push(rgb);
+          const key = (rgb[0] >> 4) * 256 + (rgb[1] >> 4) * 16 + (rgb[2] >> 4);
+          counts.set(key, (counts.get(key) ?? 0) + 1);
+        }
+      }
+      if (seen.length === 0) return false;
+      let top1 = 0, most = -1;
+      for (const [key, n] of counts) if (n > most) { most = n; top1 = key; }
+      const base = [(top1 >> 8) * 16 + 8, ((top1 >> 4) & 15) * 16 + 8, (top1 & 15) * 16 + 8];
+      const off = seen.filter(([r, g, bl]) => Math.abs(r - base[0]) + Math.abs(g - base[1]) + Math.abs(bl - base[2]) > 60).length;
+      return off / seen.length < 0.03;
+    };
+    const corners = [
+      [W - w - gap, H - h - gap],
+      [gap, H - h - gap],
+      [W - w - gap, gap],
+      [gap, gap],
+    ];
+    let place = corners.find(([left, top]) => free(left, top));
+    if (!place) {
+      const strip = h + 2 * gap;
+      done = new OffscreenCanvas(W, H + strip);
+      const g = done.getContext('2d');
+      const [r, gr, bl] = at(0, H - 1);
+      g.fillStyle = `rgb(${r}, ${gr}, ${bl})`;
+      g.fillRect(0, 0, W, H + strip);
+      g.drawImage(c, 0, 0);
+      place = [W - w - gap, H + gap];
+    }
+    const [left, top] = place;
+    const y = done.getContext('2d');
+    y.font = `700 ${13 * t}px system-ui, -apple-system, sans-serif`;
+    y.textAlign = 'left'; y.textBaseline = 'middle';
+    y.globalAlpha = 0.92; y.fillStyle = '#111111';
+    y.beginPath(); y.roundRect(left, top, w, h, 6 * t); y.fill();
+    y.globalAlpha = 1;
     const my = top + (h - sq) / 2;
-    x.fillStyle = '#f2f2f2'; x.fillRect(left + pad, my, sq, sq);
-    x.fillStyle = '#ffc400'; x.fillRect(left + pad + sq * 0.7, my, sq, sq);
+    y.fillStyle = '#f2f2f2'; y.fillRect(left + pad, my, sq, sq);
+    y.fillStyle = '#ffc400'; y.fillRect(left + pad + sq * 0.7, my, sq, sq);
     const tx = left + pad + sq * 1.7 + 6 * t;
-    x.fillStyle = '#f2f2f2'; x.fillText('Side', tx, top + h / 2 + t);
-    x.fillStyle = '#ffc400'; x.fillText('Shot', tx + side, top + h / 2 + t);
+    y.fillStyle = '#f2f2f2'; y.fillText('Side', tx, top + h / 2 + t);
+    y.fillStyle = '#ffc400'; y.fillText('Shot', tx + side, top + h / 2 + t);
   }
-  const blob = await c.convertToBlob({ type: 'image/png' });
+  const blob = await done.convertToBlob({ type: 'image/png' });
   const bytes = new Uint8Array(await blob.arrayBuffer());
   let bin = '';
   for (let k = 0; k < bytes.length; k += 0x8000) bin += String.fromCharCode(...bytes.subarray(k, k + 0x8000));
