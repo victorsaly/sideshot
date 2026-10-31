@@ -362,6 +362,46 @@ describe('draw.mjs', () => {
     assert.deepEqual(none, []);
   });
 
+  it('strikes nothing on before for blank page that was only cropped away', async () => {
+    const was = { width: 400, height: 140, rects: [[40, 30, 200, 20, '#222222']] };
+    const now = { width: 400, height: 50, rects: [[40, 30, 200, 20, '#222222']] };
+    const { changed, gone } = await marked(was, now);
+    assert.equal(changed, 0);
+    assert.deepEqual(gone, []);
+  });
+
+  it('strikes on before the part of a solid block that got shorter', async () => {
+    const was = { width: 400, height: 140, rects: [[40, 30, 200, 20, '#3355aa']] };
+    const now = { width: 400, height: 140, rects: [[40, 30, 200, 10, '#3355aa']] };
+    const { changed, gone } = await marked(was, now);
+    assert.equal(changed, 1);
+    assert.equal(gone.length, 1, JSON.stringify(gone));
+    const [[, t, , b]] = gone;
+    assert.ok(t >= 30 && b <= 50, JSON.stringify(gone));
+  });
+
+  it('strikes on before a block beyond the width of an after picture that got narrower', async () => {
+    const was = { width: 400, height: 80, rects: [[40, 30, 200, 20, '#222222'], [260, 30, 100, 20, '#cc3300']] };
+    const now = { width: 240, height: 80, rects: [[40, 30, 200, 20, '#222222']] };
+    const { gone } = await marked(was, now);
+    assert.equal(gone.length, 1, JSON.stringify(gone));
+    assert.ok(gone[0][0] >= 250 && gone[0][2] <= 370, JSON.stringify(gone));
+  });
+
+  it('keeps a rule for what was taken out beside a part boxed once', async () => {
+    // Four blocks down the left recoloured, and a block on the right, in a column of its own and below them, taken
+    // out: its rule lands under the one box, in rows of its own.
+    const page = (colour, right) => ({
+      width: 400,
+      height: 260,
+      rects: [...[30, 80, 130, 180].map((top) => [40, top, 200, 20, colour]), ...(right ? [[300, 230, 80, 20, '#cc3300']] : [])],
+    });
+    const { changed, whole, runs } = await marked(page('#222222', true), page('#555555', false));
+    assert.equal(whole, true);
+    assert.equal(changed, 2, JSON.stringify(runs));
+    assert.ok(runs.some((r) => r.left >= 290 && r.bottom - r.top <= 8), JSON.stringify(runs));
+  });
+
   it('leaves a change box out from under a ring that covers it, and still counts the change', async () => {
     const ring = { n: 1, x: 40, y: 90, w: 160, h: 20 };
     const withBefore = await marked(card(false), card(true), { rings: [ring] });

@@ -119,10 +119,11 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
       // blocks), or when its rows are nowhere in "after"; space that only shrank is not.
       const inAfter = new Set(HB);
       const added = new Uint8Array(B.h), cuts = [];
-      const taken = [];
+      const taken = [], shrunk = [];
       const cut = (run, y) => {
-        taken.push({ y, run });
-        if (isContent(A, run.start) || !inAfter.has(run.hash)) cuts.push({ y, run });
+        const said = isContent(A, run.start) || !inAfter.has(run.hash);
+        taken.push({ y, run, said });
+        if (said) cuts.push({ y, run });
       };
       // Where each row of "after" was in "before", as rows to add: known where rows lined up, and for what did
       // not, taken from the nearest row above that did.
@@ -145,7 +146,10 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
           tail = now > was && !isContent(B, RB[j].start) ? Math.min(B.h - 1, RB[j].start + was) : B.h - 1;
           if (Math.abs(now - was) > rounding && isContent(B, RB[j].start)) {
             if (now > was) added.fill(1, RB[j].start, RB[j].end);
-            else cuts.push({ y: RB[j].end, run: null });
+            else {
+              cuts.push({ y: RB[j].end, run: null });
+              shrunk.push({ at: RB[j].end, start: RA[i].start + now, end: RA[i].end });
+            }
           }
           i++; j++;
         }
@@ -248,33 +252,52 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
       // Where what was taken out was, on "before": the runs taken out at one place, together, boxed around what
       // differs from the row above them or, when a block as tall took their place, from that block, so a button
       // that changed is boxed on both sides. Not what only moved by a rounding, as on "after".
+      // Blank page that was only cropped away, or space that only shrank, is not struck: a block is, when a run
+      // in it was content or is nowhere in "after", as for the rules.
       const blocks = [];
-      for (const { y, run } of taken) {
+      for (const { y, run, said } of taken) {
         const last = blocks[blocks.length - 1];
-        if (last && last.at === y && last.end === run.start) last.end = run.end;
-        else blocks.push({ at: y, start: run.start, end: run.end });
+        if (last && last.at === y && last.end === run.start) { last.end = run.end; last.said ||= said; }
+        else blocks.push({ at: y, start: run.start, end: run.end, said });
       }
+      for (const { at, start, end } of shrunk) blocks.push({ at, start, end, said: true });
+      // Across all of "before" when the pictures differ in width (then nothing lined up, and what went may lie
+      // beyond "after"), and then without the check for what only moved, which reads both pictures alike.
+      const alike2 = A.w === B.w, ax0 = alike2 ? x0 : 0, ax1 = alike2 ? x1 : A.w;
       const gone = [];
-      for (const { at, start, end } of blocks) {
+      for (const { at, start, end, said } of blocks) {
+        if (!said) continue;
         let y1 = at;
         while (y1 + 1 < B.h && added[y1 + 1]) y1++;
         const replaced = added[at] && (at === 0 || !added[at - 1]) && y1 === at + end - start - 1 && replacedBy(at, y1) === start;
-        const ref = start > 0 ? start - 1 : end < A.h ? end : -1;
-        const differs = (yy, xx) => {
-          const k = (yy * A.w + xx) * 4;
-          const Q = replaced ? B : A, r = replaced ? ((at + yy - start) * B.w + xx) * 4 : ref === -1 ? 0 : (ref * A.w + xx) * 4;
-          return Math.abs(A.d[k] - Q.d[r]) + Math.abs(A.d[k + 1] - Q.d[r + 1]) + Math.abs(A.d[k + 2] - Q.d[r + 2]) > (replaced ? alike : 60);
-        };
-        let bx0 = x1, bx1 = -1, t = -1, btm = -1;
+        // Against the row of space next to the block: above, or below when the block sits right under content, or
+        // is the lower part of a block that got shorter.
+        const space = (yy) => yy >= 0 && yy < A.h && !isContent(A, yy);
+        const ref = space(start - 1) ? start - 1 : space(end) ? end : start > 0 ? start - 1 : end < A.h ? end : -1;
+        const apart = (k, Q, r) => Math.abs(A.d[k] - Q.d[r]) + Math.abs(A.d[k + 1] - Q.d[r + 1]) + Math.abs(A.d[k + 2] - Q.d[r + 2]);
+        // Pictures of two widths lined nothing up, so all of "before" is one block: what went is what is not
+        // alike in "after" at the same place, or is ink where "after" has no place at all.
+        const differs = alike2
+          ? (yy, xx) => {
+              const k = (yy * A.w + xx) * 4;
+              return replaced
+                ? apart(k, B, ((at + yy - start) * B.w + xx) * 4) > alike
+                : apart(k, A, ref === -1 ? 0 : (ref * A.w + xx) * 4) > 60;
+            }
+          : (yy, xx) => {
+              const k = (yy * A.w + xx) * 4, by = at + yy - start;
+              return xx >= B.w || by >= B.h ? apart(k, A, 0) > 60 : apart(k, B, (by * B.w + xx) * 4) > alike;
+            };
+        let bx0 = ax1, bx1 = -1, t = -1, btm = -1;
         for (let yy = start; yy < end; yy++)
-          for (let xx = x0; xx < x1; xx++)
+          for (let xx = ax0; xx < ax1; xx++)
             if (differs(yy, xx)) {
               if (xx < bx0) bx0 = xx;
               if (xx > bx1) bx1 = xx;
               if (t === -1) t = yy;
               btm = yy;
             }
-        if (bx1 >= 0 && btm - t >= 2 && !onlyMoved(bx0, at + t - start, bx1 + 1, at + btm + 1 - start, start - at))
+        if (bx1 >= 0 && btm - t >= 2 && !(alike2 && onlyMoved(bx0, at + t - start, bx1 + 1, at + btm + 1 - start, start - at)))
           gone.push([bx0, t, bx1 + 1, btm + 1]);
       }
       const inset = Math.min(6, Math.floor(cw / 4));
@@ -304,9 +327,11 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
     const spread = 0.6;
     const union = (bs) => bs.reduce((u, bx) => [Math.min(u[0], bx[0]), Math.min(u[1], bx[1]), Math.max(u[2], bx[2]), Math.max(u[3], bx[3])]);
     if (boxes.length >= 4 && union(boxes)[3] - union(boxes)[1] >= spread * B.h) {
-      boxes = [union(boxes)];
-      rules = [];
-      gone = gone.length > 0 ? [union(gone)] : [];
+      const u = union(boxes);
+      boxes = [u];
+      rules = rules.filter(([y, from, to]) => !(y >= u[1] && y <= u[3] && from >= u[0] && to <= u[2]));
+      const across = gone.filter((g) => g[2] > u[0] && g[0] < u[2]);
+      gone = [...(across.length > 0 ? [union(across)] : []), ...gone.filter((g) => !across.includes(g))];
       whole = true;
     }
     x.lineWidth = 6; x.strokeStyle = colour;
