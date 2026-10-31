@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.6.2 (unreleased)
+## 0.6.2 (2026-10-31)
 
 - **The table says which words changed.** Under each pair, the stretches of the part's text that differ, as the
   page shows it: what went struck through, what came in bold, three words round each. A mark can show where a
