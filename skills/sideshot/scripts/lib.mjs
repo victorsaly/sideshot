@@ -513,7 +513,8 @@ export const nothingTableOf = ({ why, before, after, page }) =>
  * mark cannot say which word changed; the page's own text can. */
 export function textDiffOf(before, after) {
   // Up to this many words a side: a part longer than that is a page, and its diff a scroll.
-  const most = 1500, context = 3, longest = 18, stretches = 4;
+  // A stretch is at most 40 words all told, and no one run of them more than 18: the rest is said to be more.
+  const most = 1500, context = 3, longest = 18, budget = 40, stretches = 4;
   const wordsOf = (text) => String(text ?? '').split(/\s+/).filter(Boolean).slice(0, most);
   const A = wordsOf(before), B = wordsOf(after), n = A.length, m = B.length;
   const L = new Uint16Array((n + 1) * (m + 1));
@@ -541,14 +542,18 @@ export function textDiffOf(before, after) {
     let end = k;
     while (end < ops.length && !(ops[end][0] === '=' && ops[end + 1]?.[0] === '=' && ops[end + 2]?.[0] === '=')) end++;
     const piece = ops.slice(Math.max(0, k - context), k).map(([, w]) => plain(w));
-    let cut = false;
-    for (let at = k; at < end; ) {
+    let cut = false, room = budget - piece.length, at = k;
+    while (at < end) {
       const kind = ops[at][0];
       let to = at;
       while (to < end && ops[to][0] === kind) to++;
-      const words = ops.slice(at, Math.min(to, at + longest)).map(([, w]) => plain(w));
-      if (to - at > longest) cut = true;
+      const take = Math.min(to - at, longest, room);
+      if (take < to - at) cut = true;
+      if (take <= 0) break;
+      const words = ops.slice(at, at + take).map(([, w]) => plain(w));
       piece.push(kind === '=' ? words.join(' ') : kind === '-' ? `~~${words.join(' ')}~~` : `**${words.join(' ')}**`);
+      room -= take;
+      if (cut) break;
       at = to;
     }
     if (!cut) piece.push(...ops.slice(end, end + context).map(([, w]) => plain(w)));

@@ -43,6 +43,7 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
   const c = new OffscreenCanvas(b.width, b.height), x = c.getContext('2d');
   x.drawImage(b, 0, 0);
   let changed = 0, whole = false, gone = [], loupes = 0;
+  const insets = [];
   if (before) {
     const a = await load(before);
     const pixelsOf = (img) => {
@@ -342,21 +343,26 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
     x.setLineDash([]);
     // A change under 40 CSS pixels each way (a dot, an icon, a radius) is hard to see at a phone's size: it is
     // shown again at three times its size, in an inset placed where it covers the least ink, beside the change,
-    // at the end of its line, or in a corner, joined to it by a thin line.
+    // below or above it, at the end of its line, or in a corner, joined to it by a thin line. Only where it fits
+    // whole in the picture, clear of every change, ring and earlier inset: a picture as low as a button has no
+    // room for one, and then there is none.
     const small = 40 * scale, times = 3, most = 150 * scale, pad = 14 * scale, around = 8 * scale;
     for (const [l, t, r, btm] of boxes) {
       if (r - l >= small || btm - t >= small) continue;
-      loupes++;
       const rl = Math.max(0, l - around), rt = Math.max(0, t - around), rr = Math.min(b.width, r + around), rb = Math.min(b.height, btm + around);
       const rw = rr - rl, rh = rb - rt, mag = Math.min(times, most / Math.max(rw, rh));
       const w = rw * mag, h = rh * mag, cx = (l + r) / 2, cy = (t + btm) / 2;
+      if (w + 2 * pad > b.width || h + 2 * pad > b.height) continue;
       const clamp = (p) => [Math.min(b.width - w - pad, Math.max(pad, p[0])), Math.min(b.height - h - pad, Math.max(pad, p[1]))];
+      const over = (p, [L, T, R, Bt], gap) => p[0] < R + gap && p[0] + w > L - gap && p[1] < Bt + gap && p[1] + h > T - gap;
       const spots = [
         [r + 24 * scale, cy - h / 2], [l - 24 * scale - w, cy - h / 2], [cx - w / 2, btm + 24 * scale], [cx - w / 2, t - 24 * scale - h],
         [b.width - w - pad, cy - h / 2], [pad, cy - h / 2], [pad, pad], [b.width - w - pad, pad], [pad, b.height - h - pad],
       ]
         .map(clamp)
-        .filter((p) => p[0] > r + 12 * scale || p[0] + w < l - 12 * scale || p[1] > btm + 12 * scale || p[1] + h < t - 12 * scale);
+        .filter((p) => !boxes.some((bx) => over(p, bx, 12 * scale)) && !ringBoxes.some((rb2) => over(p, rb2, 12 * scale)))
+        .filter((p) => !insets.some((q) => over(p, q, 4 * scale)));
+      if (spots.length === 0) continue;
       const ink = (p) => {
         let n = 0, all = 0;
         for (let yy = Math.floor(p[1]); yy < p[1] + h; yy += 4)
@@ -367,9 +373,11 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
         return n / Math.max(1, all);
       };
       const dist = (p) => (p[0] + w / 2 - cx) ** 2 + (p[1] + h / 2 - cy) ** 2;
-      const scored = (spots.length > 0 ? spots : [[pad, pad]]).map((p) => ({ p, ink: ink(p) }));
+      const scored = spots.map((p) => ({ p, ink: ink(p) }));
       const least = Math.min(...scored.map((q) => q.ink));
       const [ix, iy] = scored.filter((q) => q.ink <= least + 0.01).map((q) => q.p).reduce((best, p) => (dist(p) < dist(best) ? p : best));
+      insets.push([ix, iy, ix + w, iy + h]);
+      loupes++;
       // The line joins the nearer edges, across or down, whichever way the inset lies.
       const dx = ix + w / 2 - cx, dy = iy + h / 2 - cy, mid = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
       x.lineWidth = 2 * scale; x.strokeStyle = colour; x.beginPath();
@@ -493,7 +501,7 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
   const bytes = new Uint8Array(await blob.arrayBuffer());
   let bin = '';
   for (let k = 0; k < bytes.length; k += 0x8000) bin += String.fromCharCode(...bytes.subarray(k, k + 0x8000));
-  return { png: btoa(bin), changed, gone, whole, loupes };
+  return { png: btoa(bin), changed, gone, whole, loupes, insets };
 }
 
 /** Runs in the page: dashed boxes on a picture where what was taken out was (gone, from finish), in the colour. */

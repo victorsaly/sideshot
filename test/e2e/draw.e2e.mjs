@@ -420,6 +420,34 @@ describe('draw.mjs', () => {
     assert.equal((await marked(card(false), card(true))).loupes, 0);
   });
 
+  it('draws no inset where none fits clear of the change, and counts none', async () => {
+    // A picture as low as a button: the inset, three times the dot and its surround, has nowhere to go.
+    const low = (dot) => ({ width: 400, height: 40, rects: [[40, 15, 10, 10, dot], [60, 15, 240, 10, '#222222']] });
+    const { changed, loupes, insets, runs } = await marked(low('#9a9a9a'), low('#1f9d55'));
+    assert.equal(changed, 1, JSON.stringify(runs));
+    assert.equal(loupes, 0);
+    assert.deepEqual(insets, []);
+    assert.ok(runs.every((r) => r.right <= 64), JSON.stringify(runs));
+  });
+
+  it('keeps two insets apart, inside the picture, and off every change', async () => {
+    // Two dots on two lines close together, both changed (on one line they would be one box): the inset below
+    // the first is where the second's would go.
+    const pair = (a, b) => ({
+      width: 400,
+      height: 200,
+      rects: [[40, 50, 10, 10, a], [60, 50, 220, 10, '#222222'], [40, 70, 10, 10, b], [60, 70, 220, 10, '#222222']],
+    });
+    const { loupes, insets } = await marked(pair('#9a9a9a', '#9a9a9a'), pair('#1f9d55', '#cc3300'));
+    assert.equal(loupes, 2, JSON.stringify(insets));
+    const apart = (p, q) => p[2] <= q[0] || q[2] <= p[0] || p[3] <= q[1] || q[3] <= p[1];
+    assert.ok(apart(insets[0], insets[1]), JSON.stringify(insets));
+    for (const [l, t, r, b] of insets) {
+      assert.ok(l >= 0 && t >= 0 && r <= 400 && b <= 200, JSON.stringify(insets));
+      for (const dot of [[40, 50, 50, 60], [40, 70, 50, 80]]) assert.ok(apart([l, t, r, b], dot), JSON.stringify(insets));
+    }
+  });
+
   it('leaves a change box out from under a ring that covers it, and still counts the change', async () => {
     const ring = { n: 1, x: 40, y: 90, w: 160, h: 20 };
     const withBefore = await marked(card(false), card(true), { rings: [ring] });

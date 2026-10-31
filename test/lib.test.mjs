@@ -447,6 +447,15 @@ describe('textDiffOf', () => {
     assert.ok(line.split(' ').length <= 48, line);
     assert.match(line, /…$/);
   });
+  it('keeps a stretch of many small changes short too, not only a long run', () => {
+    // Every third word of 120 replaced: the two kept between each pair hold it all in one stretch.
+    const was = Array.from({ length: 120 }, (_, i) => `w${String(i)}`);
+    const now = was.map((w, i) => (i % 3 === 0 ? `x${String(i)}` : w));
+    const lines = textDiffOf(was.join(' '), now.join(' '));
+    assert.equal(lines.length, 1, JSON.stringify(lines));
+    assert.ok(lines[0].split(' ').length <= 48, lines[0]);
+    assert.match(lines[0], /…$/);
+  });
   it('keeps Markdown in the words from rendering', () => {
     assert.deepEqual(textDiffOf('a', 'a *b* <i>'), ['a **\\*b\\* \\<i>**']);
   });
