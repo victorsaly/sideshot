@@ -532,3 +532,49 @@ export function bodyWith(body, table) {
   const rest = body.trimEnd();
   return rest === '' ? `${block}\n` : `${rest}\n\n${block}\n`;
 }
+
+/** Whether a command run pushes a branch or opens a pull request (gh pr create, or ready from a draft): after it,
+ * the pull request may want pictures. Pushes of tags, and deletions, change no pull request. */
+export function isPrPush(command) {
+  return String(command)
+    .split(/&&|\|\||[;|\n]/)
+    .some((step) => {
+      const words = step.trim().replace(/^(?:\w+=\S*\s+)+/, '');
+      if (/^gh\s+pr\s+(?:create|ready)\b/.test(words)) return true;
+      const push = /^git(?:\s+-[Cc]\s+\S+)*\s+push\b(.*)$/.exec(words);
+      return push !== null && !/(?:^|\s)(?:--tags|--delete|-d)(?:\s|$)|\s:\S/.test(push[1]);
+    });
+}
+
+// What people see: styles, markup and components, images and fonts, and a theme's settings. Tests and stories of
+// those are for the people working on them, and what is under .github never shows on a page.
+const seenFile = /\.(?:css|scss|sass|less|styl|pcss|html?|jsx|tsx|vue|svelte|astro|mdx|erb|hbs|handlebars|njk|liquid|twig|ejs|pug|svg|png|jpe?g|gif|webp|avif|ico|woff2?|ttf|otf)$|(?:^|\/)tailwind\.config\.[cm]?[jt]s$/i;
+const unseenFile = /(?:^|\/)(?:__tests__|__snapshots__|tests?|e2e|\.storybook|\.github)\/|\.(?:test|spec|stories)\.[^/]+$/i;
+
+/** The files among these that change what people see. */
+export const seenOf = (files) => files.filter((f) => seenFile.test(f) && !unseenFile.test(f));
+
+/** Whether the reminder is turned off everywhere: SIDESHOT_REMIND=off in the environment, which Claude Code passes
+ * on from the "env" of ~/.claude/settings.json. "remind": false in .sideshot.json is for one project. */
+export const quietIn = (env) =>
+  ['off', '0', 'false', 'no'].includes(String(env.SIDESHOT_REMIND ?? '').trim().toLowerCase());
+
+/** What the agent is told after it pushes or opens a pull request that changes what people see and has no
+ * pictures yet, or null when there is nothing to tell: a reminder, so whether the change shows on a page is still
+ * the agent's call. A project turns it off with "remind": false in .sideshot.json, and a person everywhere with
+ * SIDESHOT_REMIND=off. */
+export function reminderOf({ command, config, body, files, env = {} }) {
+  if (!isPrPush(command) || quietIn(env) || config.remind === false || String(body ?? '').includes(markers.start))
+    return null;
+  const seen = seenOf(files);
+  if (seen.length === 0) return null;
+  const shown = 5;
+  const named =
+    seen.length > shown ? `${seen.slice(0, shown).join(', ')} and ${String(seen.length - shown)} more` : seen.join(', ');
+  return (
+    `This pull request changes files people see (${named}), and its description has no before-and-after ` +
+    'pictures. If the change shows on a page, use SideShot (the sideshot skill): picture the part that changed, and ' +
+    'show the person before anything is published. If it does not show on a page, carry on. To turn this reminder ' +
+    'off for the project, set "remind": false in .sideshot.json; for every project, SIDESHOT_REMIND=off.'
+  );
+}

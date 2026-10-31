@@ -9,6 +9,7 @@ import {
   fileNameOf,
   isBranchName,
   isPicture,
+  isPrPush,
   label,
   markers,
   nothingOf,
@@ -20,10 +21,13 @@ import {
   prOfBranch,
   prFoldersOf,
   pruneOptionsOf,
+  quietIn,
+  reminderOf,
   ringsWithin,
   runOf,
   runsOf,
   runKeyOf,
+  seenOf,
   sheetsOf,
   shownOf,
   slugOf,
@@ -530,5 +534,110 @@ describe('runsOf and runOf', () => {
     for (const kept of [undefined, null, 'x', { same: 'x' }, { same: [1] }, { same: [], nothing: 4 }])
       assert.deepEqual(runOf({ k: kept }, 'k'), none, JSON.stringify(kept));
     assert.deepEqual(runOf({}, '__proto__'), none);
+  });
+});
+
+describe('isPrPush', () => {
+  it('knows a push, or a pull request opened, among the commands run', () => {
+    for (const command of [
+      'git push',
+      'git push -u origin feat/pricing',
+      'git -C ../site push',
+      'git add -A && git commit -m "Restyle the cards" && git push',
+      'cd site; git push --force-with-lease',
+      'GIT_TRACE=1 git push',
+      'gh pr create --fill',
+      'gh pr create --title "Pricing" --body-file pr.md',
+      'gh pr ready 12',
+    ])
+      assert.equal(isPrPush(command), true, command);
+  });
+  it('leaves alone what changes no pull request', () => {
+    for (const command of [
+      'git status',
+      'git commit -m "git push later"',
+      'echo git push',
+      'git push --tags',
+      'git push origin --delete old-branch',
+      'git push origin :old-branch',
+      'gh pr view 12',
+      'gh pr list --head feat',
+      'node skills/sideshot/scripts/sideshot.mjs --update-pr',
+      '',
+    ])
+      assert.equal(isPrPush(command), false, command);
+  });
+});
+
+describe('seenOf', () => {
+  it('keeps the files that change what people see', () => {
+    const files = [
+      'src/styles/pricing.css',
+      'src/components/PricingCard.tsx',
+      'src/pages/index.astro',
+      'app/views/orders/show.html.erb',
+      'src/lib/Header.svelte',
+      'public/img/hero.avif',
+      'tailwind.config.js',
+    ];
+    assert.deepEqual(seenOf(files), files);
+  });
+  it('leaves out logic, tests, stories and the repository\'s own files', () => {
+    const files = [
+      'server/routes/pricing.ts',
+      'src/lib/format.js',
+      'src/components/PricingCard.test.tsx',
+      'src/components/__tests__/Card.tsx',
+      'e2e/pricing.spec.ts',
+      'src/components/Button.stories.tsx',
+      'src/components/__snapshots__/Card.tsx.snap',
+      'README.md',
+      '.github/workflows/check.yml',
+      'package-lock.json',
+    ];
+    assert.deepEqual(seenOf(files), []);
+  });
+});
+
+describe('reminderOf', () => {
+  const pushed = { command: 'git push', config: {}, body: 'Restyles the pricing cards.', files: ['src/pricing.css'] };
+
+  it('reminds the agent of SideShot when a pull request changes what people see and has no pictures', () => {
+    const reminder = reminderOf(pushed);
+    assert.match(reminder, /SideShot/);
+    assert.match(reminder, /src\/pricing\.css/);
+    // It leaves the call to the agent, and says how to turn it off.
+    assert.match(reminder, /does not show on a page/);
+    assert.match(reminder, /"remind": false/);
+  });
+  it('names a few of the files, and counts the rest', () => {
+    const files = Array.from({ length: 8 }, (_, i) => `src/c${String(i)}.css`);
+    const reminder = reminderOf({ ...pushed, files });
+    assert.match(reminder, /src\/c4\.css and 3 more/);
+    assert.doesNotMatch(reminder, /c5\.css/);
+  });
+  it('says nothing when there is nothing to remind of', () => {
+    for (const asked of [
+      { ...pushed, command: 'git status' },
+      { ...pushed, files: ['server/db.ts'] },
+      { ...pushed, files: [] },
+      { ...pushed, body: `Restyles the cards.\n\n${markers.start}\n## Before and after\n${markers.end}` },
+      { ...pushed, config: { remind: false } },
+      { ...pushed, env: { SIDESHOT_REMIND: 'off' } },
+    ])
+      assert.equal(reminderOf(asked), null, JSON.stringify(asked));
+  });
+  it('reads a description gh gives as null as an empty one', () => {
+    assert.match(reminderOf({ ...pushed, body: null }), /SideShot/);
+  });
+});
+
+describe('quietIn', () => {
+  it('is quiet everywhere when SIDESHOT_REMIND says off, in any of the usual words', () => {
+    for (const value of ['off', 'OFF', '0', 'false', 'no', ' off ']) assert.equal(quietIn({ SIDESHOT_REMIND: value }), true, value);
+  });
+  it('reminds when it is not set, or set to anything else', () => {
+    for (const env of [{}, { SIDESHOT_REMIND: '' }, { SIDESHOT_REMIND: 'on' }, { SIDESHOT_REMIND: '1' }, { OTHER: 'off' }])
+      assert.equal(quietIn(env), false, JSON.stringify(env));
   });
 });
