@@ -28,7 +28,7 @@ branch.</p>
 
 <p align="center">
   <a href="https://skills.sh"><img src="https://img.shields.io/badge/Agent_Skill-Claude_Code_%C2%B7_Codex_%C2%B7_Cursor_%C2%B7_OpenCode-000000?style=flat-square" alt="An Agent Skill, for Claude Code, Codex, Cursor and OpenCode" /></a>
-  <img src="https://img.shields.io/badge/version-0.5.7-000000?style=flat-square" alt="Version 0.5.7" />
+  <img src="https://img.shields.io/badge/version-0.6.0-000000?style=flat-square" alt="Version 0.6.0" />
   <a href="https://github.com/victorsaly/sideshot/actions/workflows/check.yml"><img src="https://img.shields.io/github/actions/workflow/status/victorsaly/sideshot/check.yml?branch=main&style=flat-square&label=check&color=000000" alt="Checks on main" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-000000?style=flat-square" alt="MIT licence" /></a>
 </p>
@@ -67,6 +67,29 @@ Save where *before* and *after* live in `.sideshot.json` at the project's root, 
 ```json
 { "before": "https://example.com", "after": "http://localhost:4321",
   "devices": { "web": "desk", "mobile": "phone", "kiosk": "1080x1920" } }
+```
+
+### On every pull request
+
+Installed as a Claude Code plugin (below), SideShot also reminds your agent. After it pushes, or opens a pull
+request, that changes files people see (styles, components, markup, images, fonts) and has no pictures yet, the
+agent is told so, and decides whether the change shows on a page. A pull request that changes no such file, or
+already has its table, hears nothing.
+
+- **Off for one project:** `"remind": false` in its `.sideshot.json`.
+- **Off everywhere:** in `~/.claude/settings.json`, `"env": { "SIDESHOT_REMIND": "off" }`. The skill stays.
+- **On, with the skill alone** (`npx skills add`, no plugin): the same reminder is in the skill's folder. Add it to
+  `~/.claude/settings.json`, with the path to where the skill went (`-g` puts it in `~/.claude/skills/sideshot`):
+
+  ```json
+  { "hooks": { "PostToolUse": [ { "matcher": "Bash", "hooks": [
+    { "type": "command", "command": "node ~/.claude/skills/sideshot/scripts/hook.mjs", "timeout": 30 } ] } ] } }
+  ```
+
+In any other agent, one line in the project's `AGENTS.md` (or `CLAUDE.md`) asks the same:
+
+```markdown
+When you open or update a pull request that changes what people see, picture it with SideShot and put the table in the description.
 ```
 
 <details>

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.0 (unreleased)
+
+- **A pull request that changes what people see gets its pictures without being asked for them**, in Claude Code.
+  The plugin has a hook now: after the agent pushes, or opens a pull request, that changes styles, components,
+  markup, images or fonts, and whose description has no SideShot table yet, the agent is reminded of SideShot and
+  decides whether the change shows on a page. Backend changes, and pull requests that have their table, hear
+  nothing. `"remind": false` in `.sideshot.json` turns it off for a project, and `SIDESHOT_REMIND=off` for every
+  one. With the skill alone, the README says how to turn the same reminder on in Claude Code; for other agents, it
+  gives the line to put in `AGENTS.md`.
+
 ## 0.5.7 (2026-10-31)
 
 - **`--mark-changes` boxes the one thing that changed in a row, not the row.** A block that replaced rows of the

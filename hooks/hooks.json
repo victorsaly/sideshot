@@ -1,0 +1,17 @@
+{
+  "description": "After a push, or a pull request opened, that changes what people see and has no pictures yet, reminds the agent of SideShot.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/sideshot/scripts/hook.mjs\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
