@@ -6,7 +6,7 @@
 </p>
 <h3 align="center">Before and after, for every pull request that changes what people see.</h3>
 
-<p align="center"><img src="docs/assets/hero.png" alt="SideShot: the same part of a page before and after a change, on a desk and a phone" width="960" /></p>
+<p align="center"><img src="docs/assets/hero.png" alt="SideShot: the footer of a real site before and after its pull request, on a desk and a phone, with the change ringed" width="960" /></p>
 
 <p align="center"><strong>A diff cannot show a UI change.</strong> Tell your coding agent to
 <em>sideshot this PR</em>. It works out which page and which parts your change touches, pictures them before and after

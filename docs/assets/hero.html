@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<!--
+  The source of hero.png, the first picture in the README. The pictures in hero/ are SideShot's own output,
+  as taken: the footer of skills.victorsaly.com before and after its pull request #3, on a desk and a phone,
+  with the change ringed (--note) and the tag in the corner. Edit this file, then: node docs/render.mjs
+-->
+<head>
+  <meta charset="utf-8" />
+  <title>See the change. Side by side.</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800;900&display=swap" />
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #000000;
+      --muted: #444444;
+      --frame: #cfcfcf;
+      --marigold: #ffc400;
+    }
+    html, body { margin: 0; background: var(--bg); }
+    body {
+      width: 1600px;
+      box-sizing: border-box;
+      padding: 56px 64px 52px;
+      color: var(--fg);
+      font-family: Inter, -apple-system, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    }
+    h1 { margin: 0; font-size: 52px; line-height: 1.05; font-weight: 900; letter-spacing: -0.01em; }
+    .lede { margin: 18px 0 0; max-width: 1340px; font-size: 21px; line-height: 1.4; color: var(--muted); }
+
+    .row { display: flex; align-items: baseline; justify-content: space-between; margin-top: 36px; }
+    .row + .row { margin-top: 24px; }
+    .label { font-size: 15px; font-weight: 800; letter-spacing: 0.14em; }
+    .device { font-size: 14px; color: var(--muted); letter-spacing: 0.02em; }
+    .rule { height: 3px; background: var(--fg); margin-top: 8px; }
+    .after .rule { border-top: 8px solid var(--marigold); }
+    img { display: block; width: 100%; height: auto; margin-top: 10px; border: 1px solid var(--frame); box-sizing: border-box; }
+
+    /* Each phone column is as wide as its picture, so the label row and rule match it. */
+    .phones { display: grid; grid-template-columns: 640px 640px; column-gap: 48px; margin-top: 12px; }
+    .phones .row { margin-top: 24px; }
+
+    .caption { margin: 28px 0 0; font-size: 15px; line-height: 1.5; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <h1>See the change. Side by side.</h1>
+  <p class="lede">Before and after for every pull request that changes what people see: the part that changed, ringed, on a desk and a phone, in the PR, from one sentence to your coding agent.</p>
+
+  <div class="row"><span class="label">BEFORE</span><span class="device">desk · 1280 × 900</span></div>
+  <div class="rule"></div>
+  <img src="hero/footer-desk-before.png" alt="" />
+
+  <div class="row after"><span class="label">AFTER</span><span class="device">desk · 1280 × 900</span></div>
+  <div class="rule"></div>
+  <img src="hero/footer-desk-after.png" alt="" />
+
+  <div class="phones">
+    <div>
+      <div class="row"><span class="label">BEFORE</span><span class="device">phone · 390 × 844</span></div>
+      <div class="rule"></div>
+      <img src="hero/footer-phone-before.png" alt="" />
+    </div>
+    <div class="after">
+      <div class="row after"><span class="label">AFTER</span><span class="device">phone · 390 × 844</span></div>
+      <div class="rule"></div>
+      <img src="hero/footer-phone-after.png" alt="" />
+    </div>
+  </div>
+
+  <p class="caption">A real pull request, skills.victorsaly.com #3: its footer, as SideShot pictured it. The ring and the tag are SideShot's; everything else is the page.</p>
+</body>
+</html>
