@@ -271,3 +271,21 @@ describe('the evals', () => {
     for (const name of cases) assert.ok(fired(name), `evals/${name} checks the skill, fired or not`);
   });
 });
+
+describe('the plugin\'s hook', () => {
+  // Claude Code finds a plugin's hooks in hooks/hooks.json, and runs each command from wherever the plugin is.
+  const hooks = JSON.parse(read('hooks/hooks.json')).hooks;
+
+  it('runs after each Bash command, so it sees a push or a pull request opened', () => {
+    const [entry] = hooks.PostToolUse;
+    assert.equal(entry.matcher, 'Bash');
+    assert.equal(entry.hooks[0].type, 'command');
+  });
+
+  it('runs a script that is there, with Node, from the plugin\'s own folder', () => {
+    const { command } = hooks.PostToolUse[0].hooks[0];
+    const [, script] = command.match(/^node "\$\{CLAUDE_PLUGIN_ROOT\}\/([^"]+)"$/) ?? [];
+    assert.ok(script, command);
+    assert.ok(existsSync(join(root, script)), script);
+  });
+});

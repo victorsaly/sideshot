@@ -9,6 +9,8 @@ For coding agents changing this repository. People: [CONTRIBUTING.md](CONTRIBUTI
 - `skills/sideshot/scripts/sideshot.mjs`: the command. It opens the browser, runs git and gh, writes files.
 - `skills/sideshot/scripts/lib.mjs`: everything that can be worked out without a browser or git: reading the
   options, `--help`'s words, the table, what to prune. Pure functions, at least 90% covered by `test/lib.test.mjs`.
+- `skills/sideshot/scripts/hook.mjs` and `hooks/hooks.json`: the Claude Code plugin's reminder after a push. What
+  it decides on is `reminderOf`, in lib.mjs; the script only asks git and gh, and never fails the command.
 - `skills/sideshot/scripts/draw.mjs`: handed to the page as source and run there, so browser globals, not Node's.
 - `test/skill.test.mjs`: the skill's own files as an agent reads them (SKILL.md's limits, its links), the eval cases
   as the runner reads them, the install lines in the docs, and one version everywhere.

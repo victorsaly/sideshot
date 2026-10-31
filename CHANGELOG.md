@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.8 (unreleased)
+## 0.6.1 (unreleased)
 
 - **The before picture shows where what was taken out was**, in a dashed box, where it showed nothing: the
   reviewer no longer hunts for the paragraph the rule on the after picture stands for. It keeps a plain copy too.
@@ -14,7 +14,17 @@
 - **A block taken out at the end of a part is ruled where it was**, not at the foot of the picture. The blank
   page under it lined up as well as the blank above it, and the rule went with what was left over.
 
+## 0.6.0 (unreleased)
 
+- **A pull request that changes what people see gets its pictures without being asked for them**, in Claude Code.
+  The plugin has a hook now: after the agent pushes, or opens a pull request, that changes styles, components,
+  markup, images or fonts, and whose description has no SideShot table yet, the agent is reminded of SideShot and
+  decides whether the change shows on a page. Backend changes, and pull requests that have their table, hear
+  nothing. `"remind": false` in `.sideshot.json` turns it off for a project, and `SIDESHOT_REMIND=off` for every
+  one. With the skill alone, the README says how to turn the same reminder on in Claude Code; for other agents, it
+  gives the line to put in `AGENTS.md`.
+
+## 0.5.7 (2026-10-31)
 
 - **`--mark-changes` boxes the one thing that changed in a row, not the row.** A block that replaced rows of the
   same height in the same place (a button's colour, a word, an icon) was boxed around everything inked in those

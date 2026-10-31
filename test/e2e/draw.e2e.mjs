@@ -82,6 +82,13 @@ const card = (badge) => {
   return { width: 400, height: 180, rects };
 };
 
+// Lines of "text" over an area: dark bars three pixels tall, three apart, the way words fill a paragraph.
+const words = (left, top, width, height) => {
+  const rects = [];
+  for (let y = top; y + 3 <= top + height; y += 6) rects.push([left, y, width, 3, '#333333']);
+  return rects;
+};
+
 describe('draw.mjs', () => {
   let browser, page;
   before(async () => {
@@ -394,6 +401,37 @@ describe('draw.mjs', () => {
     assert.ok(runs[0].left > 150 && runs[0].top > 90, JSON.stringify(runs));
     const dark = await page.evaluate(whereOf, { png, colour: tagOnWhite });
     assert.ok(dark.length > 0 && dark.every((r) => r.left > 150 && r.top > 90), JSON.stringify(dark));
+  });
+
+  it('moves the tag to an empty corner when the bottom right holds something', async () => {
+    // Lines of "text" fill the bottom right; the bottom left is empty, so the tag goes there.
+    const spec = { width: 400, height: 180, rects: words(200, 110, 200, 70) };
+    const { png } = await marked(null, spec, { tag: true, scale: 1 });
+    const dark = await page.evaluate(whereOf, { png, colour: tagOnWhite });
+    assert.ok(dark.length > 0 && dark.every((r) => r.right < 200 && r.top > 90), JSON.stringify(dark));
+  });
+
+  it('moves the tag off a small icon, though the icon is a small share of the place', async () => {
+    // One 8 by 8 icon where the tag would sit: under 3% of the place, yet something the picture shows.
+    const spec = { width: 400, height: 180, rects: [[360, 150, 8, 8, '#555555']] };
+    const { png } = await marked(null, spec, { tag: true, scale: 1 });
+    const dark = await page.evaluate(whereOf, { png, colour: tagOnWhite });
+    assert.ok(dark.length > 0 && dark.every((r) => r.right < 200 && r.top > 90), JSON.stringify(dark));
+  });
+
+  it('grows the picture and puts the tag below it when every corner holds something', async () => {
+    const spec = { width: 400, height: 180, rects: words(0, 0, 400, 180) };
+    const { png } = await marked(null, spec, { tag: true, scale: 1 });
+    const size = await page.evaluate(async (data) => {
+      const i = new Image();
+      await new Promise((ok) => { i.onload = ok; i.src = `data:image/png;base64,${data}`; });
+      return { width: i.width, height: i.height };
+    }, png);
+    assert.equal(size.width, 400);
+    assert.ok(size.height > 180, JSON.stringify(size));
+    // The strip is the picture's own background; the tag's ink sits in it, below the picture that was.
+    const dark = await page.evaluate(whereOf, { png, colour: tagOnWhite });
+    assert.ok(dark.length > 0 && dark.every((r) => r.top >= 180), JSON.stringify(dark));
   });
 
   it('marks in marigold, unless the page is close to it', async () => {

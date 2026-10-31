@@ -34,9 +34,9 @@ touch). In `.sideshot.json`, `devices` is a list, or a map of the project's name
 ## `.sideshot.json`
 
 These options, under their own names, at the project's root: `pr`, `before`, `after`, `page`, `devices`, `schemes`,
-`click`, `setup`, `wait`, `jobs`, `accent`, `markChanges: true`, `watermark: false`, `out`, `branch`, `olderThan`.
-Parts and notes are not kept there: they change with every pull request. A flag given on the command line wins over
-the file.
+`click`, `setup`, `wait`, `jobs`, `accent`, `markChanges: true`, `watermark: false`, `out`, `branch`, `olderThan`, and
+`remind: false`, which stops the Claude Code plugin reminding the agent after a push. Parts and notes are not kept
+there: they change with every pull request. A flag given on the command line wins over the file.
 
 ## What the pictures carry
 

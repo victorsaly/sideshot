@@ -45,6 +45,24 @@ const splitOnce = (s) => {
   return i === -1 ? [s, undefined] : [s.slice(0, i), s.slice(i + 1)];
 };
 
+/** A note, "selector=words", split at the first "=" outside brackets and quotes: a selector such as
+ * a[href*="skills"] holds "=" of its own, and the words may too. A CSS escape (\[ in a Tailwind class name,
+ * \" in a value) is skipped wherever it stands: it opens and closes nothing. */
+export const splitNote = (note) => {
+  let depth = 0, quote = '';
+  for (let i = 0; i < note.length; i++) {
+    const ch = note[i];
+    if (ch === '\\') i++;
+    else if (quote) {
+      if (ch === quote) quote = '';
+    } else if (ch === '"' || ch === "'") quote = ch;
+    else if (ch === '[' || ch === '(') depth++;
+    else if ((ch === ']' || ch === ')') && depth > 0) depth--;
+    else if (ch === '=' && depth === 0) return [note.slice(0, i), note.slice(i + 1)];
+  }
+  return [note, undefined];
+};
+
 /** "phone", "1440x900", or "pixel=412x915:mobile"; null when the size cannot be read. */
 export function deviceOf(spec) {
   const [given, sized] = splitOnce(String(spec));
@@ -242,7 +260,7 @@ export function optionsOf(args, config = {}) {
     parts,
     // What changed, said on the picture: a numbered ring around each noted element in the "after" picture.
     notes: all('--note').map((note, i) => {
-      const [selector, text = ''] = splitOnce(note);
+      const [selector, text = ''] = splitNote(note);
       return { n: i + 1, selector, text };
     }),
     accent: accentOf(one('--accent', 'accent', 'auto')),
@@ -541,4 +559,121 @@ export function bodyWith(body, table) {
   if (from !== -1) return body.slice(0, from) + block + body.slice(to + end.length);
   const rest = body.trimEnd();
   return rest === '' ? `${block}\n` : `${rest}\n\n${block}\n`;
+}
+
+/** A shell command's steps (split at &&, ||, ;, |, & and new lines) and each step's words, as the shell reads
+ * them for this: quotes keep what is in them together, and a backslash keeps the character after it. Enough to know
+ * what a command runs, and where; not a shell. */
+function stepsOf(command) {
+  const text = String(command);
+  const steps = [[]];
+  let word = null;
+  let quote = null;
+  const close = () => {
+    if (word !== null) steps.at(-1).push(word);
+    word = null;
+  };
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text[i];
+    if (quote !== null) {
+      if (c === quote) quote = null;
+      else if (c === '\\' && quote === '"' && i + 1 < text.length) word += text[(i += 1)];
+      else word += c;
+    } else if (c === "'" || c === '"') {
+      quote = c;
+      word ??= '';
+    } else if (c === '\\' && i + 1 < text.length) {
+      word = (word ?? '') + text[(i += 1)];
+    } else if (c === '&' && (text[i - 1] === '>' || text[i + 1] === '>')) {
+      // A redirect (2>&1, &>), not a second command.
+      word = (word ?? '') + c;
+    } else if (c === '\n' || c === ';' || c === '|' || c === '&') {
+      close();
+      if (steps.at(-1).length > 0) steps.push([]);
+    } else if (/\s/.test(c)) {
+      close();
+    } else {
+      word = (word ?? '') + c;
+    }
+  }
+  close();
+  return steps.filter((step) => step.length > 0);
+}
+
+/** The value of a flag among a command's words (--repo o/r, -R o/r, --repo=o/r), or null. */
+function flagOf(words, long, short) {
+  for (let i = 0; i < words.length; i += 1) {
+    if ((words[i] === long || words[i] === short) && i + 1 < words.length) return words[i + 1];
+    if (words[i].startsWith(`${long}=`)) return words[i].slice(long.length + 1);
+  }
+  return null;
+}
+
+/** Where a command pushes a branch, or opens a pull request (gh pr create, or ready from a draft), or null when it
+ * does neither: after it, the pull request may want pictures. dirs are the folders cd and git -C moved to before
+ * it, in order, from where the command was run; pr and repo are the pull request and repository, when the command
+ * names them. Pushes of tags, and deletions, change no pull request. */
+export function pushOf(command) {
+  const dirs = [];
+  for (const step of stepsOf(command)) {
+    const [name, ...rest] = step.slice(step.findIndex((w) => !/^\w+=/.test(w)));
+    if (name === 'cd') {
+      dirs.push(rest[0] ?? '~');
+    } else if (name === 'gh' && rest[0] === 'pr' && (rest[1] === 'create' || rest[1] === 'ready')) {
+      const after = rest.slice(2);
+      const repo = flagOf(after, '--repo', '-R');
+      // gh pr ready names the pull request as its one word that is not a flag or a flag's value.
+      const named = after.find((w, i) => !w.startsWith('-') && !['--repo', '-R'].includes(after[i - 1]));
+      const pr = rest[1] === 'ready' ? (named ?? null) : null;
+      return { dirs, pr, repo };
+    } else if (name === 'git') {
+      const here = [...dirs];
+      let i = 0;
+      while (i < rest.length && rest[i].startsWith('-')) {
+        if (rest[i] === '-C') here.push(rest[i + 1]);
+        i += rest[i] === '-C' || rest[i] === '-c' ? 2 : 1;
+      }
+      const args = rest.slice(i + 1);
+      const changesNoPr = args.some((a) => a === '--tags' || a === '--delete' || a === '-d' || a.startsWith(':'));
+      if (rest[i] === 'push' && !changesNoPr) return { dirs: here, pr: null, repo: null };
+    }
+  }
+  return null;
+}
+
+/** Whether a command pushes a branch or opens a pull request: pushOf, said yes or no. */
+export const isPrPush = (command) => pushOf(command) !== null;
+
+// What people see: styles, markup and components, images and fonts, and a theme's settings. Tests and stories of
+// those are for the people working on them, and what is under .github never shows on a page.
+const seenFile = /\.(?:css|scss|sass|less|styl|pcss|html?|jsx|tsx|vue|svelte|astro|mdx|erb|hbs|handlebars|njk|liquid|twig|ejs|pug|svg|png|jpe?g|gif|webp|avif|ico|woff2?|ttf|otf)$|(?:^|\/)tailwind\.config\.[cm]?[jt]s$/i;
+const unseenFolder = /(?:^|\/)(?:__tests__|__snapshots__|tests?|e2e|\.storybook|\.github)\//i;
+const unseenFile = /\.(?:test|spec|stories)\.[^/]+$/i;
+
+/** The files among these that change what people see. */
+export const seenOf = (files) => files.filter((f) => seenFile.test(f) && !unseenFolder.test(f) && !unseenFile.test(f));
+
+/** Whether the reminder is turned off everywhere: SIDESHOT_REMIND=off in the environment, which Claude Code passes
+ * on from the "env" of ~/.claude/settings.json. "remind": false in .sideshot.json is for one project. */
+export const quietIn = (env) =>
+  ['off', '0', 'false', 'no'].includes(String(env.SIDESHOT_REMIND ?? '').trim().toLowerCase());
+
+/** What the agent is told after it pushes or opens a pull request that changes what people see and has no
+ * pictures yet, or null when there is nothing to tell: a reminder, so whether the change shows on a page is still
+ * the agent's call. A project turns it off with "remind": false in .sideshot.json, and a person everywhere with
+ * SIDESHOT_REMIND=off. */
+export function reminderOf({ command, config, body, files, env = {} }) {
+  if (!isPrPush(command) || quietIn(env) || config.remind === false || String(body ?? '').includes(markers.start))
+    return null;
+  const seen = seenOf(files);
+  if (seen.length === 0) return null;
+  const shown = 5;
+  const named =
+    seen.length > shown ? `${seen.slice(0, shown).join(', ')} and ${String(seen.length - shown)} more` : seen.join(', ');
+  return (
+    `This pull request changes files people see (${named}), and its description has no before-and-after ` +
+    'pictures. If the change shows on a page, use SideShot (the sideshot skill): picture the part that changed, and ' +
+    'show the person before anything is published. If it does not show on a page, carry on. To turn this reminder ' +
+    'off for the project, set "remind": false in .sideshot.json; for every project, SIDESHOT_REMIND=off.'
+  );
 }
