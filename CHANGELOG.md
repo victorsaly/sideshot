@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.6.3 (unreleased)
+## 0.6.3 (2026-10-31)
 
 - **A part that differs throughout is boxed round all of it, even under a ring.** The one box was taken over the
   changes a ring had not covered, so with a ring over the middle of such a part it stopped at the ring's content,
