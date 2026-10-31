@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<!--
+  The source of how-light.png and how-dark.png, the "How it works" figure in the README.
+  Edit this file, then render both pictures: node docs/render-how.mjs
+  It follows prefers-color-scheme, as the README does; data-theme="light" or "dark" on <html> overrides it.
+-->
+<head>
+  <meta charset="utf-8" />
+  <title>How SideShot works</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #000000;
+      --muted: #444444;
+      --rule: #d9d9d9;
+      --filled-bg: #000000;
+      --filled-fg: #ffffff;
+      --marigold: #ffc400;
+    }
+    :root[data-theme="dark"] {
+      --bg: #1b1b1b;
+      --fg: #f2f2f2;
+      --muted: #bdbdbd;
+      --rule: #3a3a3a;
+      --filled-bg: #f2f2f2;
+      --filled-fg: #1b1b1b;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #1b1b1b;
+        --fg: #f2f2f2;
+        --muted: #bdbdbd;
+        --rule: #3a3a3a;
+        --filled-bg: #f2f2f2;
+        --filled-fg: #1b1b1b;
+      }
+    }
+    html, body { margin: 0; background: var(--bg); }
+    body { width: 1400px; }
+    svg {
+      display: block;
+      width: 1400px;
+      height: 560px;
+      color: var(--fg);
+      font-family: Inter, -apple-system, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    }
+    .title { font-size: 20px; font-weight: 700; fill: currentColor; }
+    .body { font-size: 14px; fill: var(--muted); }
+    .step { font-size: 11px; font-weight: 600; letter-spacing: .12em; fill: var(--muted); }
+    .edge { font-size: 11px; fill: var(--muted); }
+    .box { fill: var(--bg); stroke: currentColor; stroke-width: 2.5; }
+    .filled .box { fill: var(--filled-bg); }
+    .filled .body { fill: var(--filled-fg); }
+    .filled .title { fill: var(--filled-fg); }
+    .machine .box { fill: var(--marigold); stroke: currentColor; }
+    .machine .title, .machine .body { fill: #000; }
+    .wire { fill: none; stroke: currentColor; stroke-width: 2.5; }
+    .legend { font-size: 14px; fill: var(--muted); }
+    .rule { stroke: var(--rule); stroke-width: 1; }
+  </style>
+</head>
+<body>
+  <svg viewBox="0 0 1400 560" role="img"
+       aria-label="Your diff, then before and after taken the same way, then Playwright on desk and phone, then you look, then the PR">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" />
+      </marker>
+    </defs>
+
+    <!-- Step labels: one row, so the pair in the middle reads as one step with two boxes -->
+    <text class="step" x="48" y="92">STEP 1</text>
+    <text class="step" x="314" y="92">STEP 2 · BOTH SIDES, THE SAME WAY</text>
+    <text class="step" x="610" y="92">STEP 3</text>
+    <text class="step" x="876" y="92">STEP 4</text>
+    <text class="step" x="1142" y="92">STEP 5</text>
+
+    <!-- 1. Your diff -->
+    <g>
+      <rect class="box" x="48" y="186" width="210" height="150" />
+      <text class="title" x="68" y="222">Your diff</text>
+      <text class="body" x="68" y="254">Your agent reads what</text>
+      <text class="body" x="68" y="275">changed and picks the</text>
+      <text class="body" x="68" y="296">page and the parts.</text>
+    </g>
+
+    <!-- 2. Before and After: one column, two boxes, an arrowhead into each -->
+    <g>
+      <rect class="box" x="314" y="108" width="240" height="134" />
+      <text class="title" x="334" y="144">Before</text>
+      <text class="body" x="334" y="176">The site as it is: production,</text>
+      <text class="body" x="334" y="197">a preview, or main run locally.</text>
+    </g>
+    <g>
+      <rect class="box" x="314" y="280" width="240" height="134" />
+      <text class="title" x="334" y="316">After</text>
+      <text class="body" x="334" y="348">Your branch, running locally.</text>
+      <text class="body" x="334" y="369">Same stand-in data on</text>
+      <text class="body" x="334" y="390">both sides.</text>
+    </g>
+
+    <!-- 3. Playwright, marigold: the machine at work -->
+    <g class="machine">
+      <rect class="box" x="610" y="186" width="210" height="150" />
+      <text class="title" x="630" y="222">Playwright</text>
+      <text class="body" x="630" y="254">Desk and phone, light and</text>
+      <text class="body" x="630" y="275">dark, each part opened</text>
+      <text class="body" x="630" y="296">and settled.</text>
+    </g>
+
+    <!-- 4. You look first, filled: your call -->
+    <g class="filled">
+      <rect class="box" x="876" y="186" width="210" height="150" />
+      <text class="title" x="896" y="222">You look first</text>
+      <text class="body" x="896" y="254">Nothing is published</text>
+      <text class="body" x="896" y="275">until you have seen</text>
+      <text class="body" x="896" y="296">the pictures.</text>
+    </g>
+
+    <!-- 5. The PR -->
+    <g>
+      <rect class="box" x="1142" y="186" width="210" height="150" />
+      <text class="title" x="1162" y="222">The PR</text>
+      <text class="body" x="1162" y="254">Pictures on a sideshot</text>
+      <text class="body" x="1162" y="275">branch, the table in</text>
+      <text class="body" x="1162" y="296">the description.</text>
+    </g>
+
+    <!-- Wires. The fork: one line out of Your diff, a head into Before and a head into After. -->
+    <path class="wire" d="M 258 261 H 286 V 175 H 314" marker-end="url(#arrow)" />
+    <path class="wire" d="M 286 261 V 347 H 314" marker-end="url(#arrow)" />
+    <!-- The join: both sides into one arrow to Playwright -->
+    <path class="wire" d="M 554 175 H 582 V 347 H 554" />
+    <path class="wire" d="M 582 261 H 610" marker-end="url(#arrow)" />
+    <!-- Playwright to You look first -->
+    <path class="wire" d="M 820 261 H 876" marker-end="url(#arrow)" />
+    <text class="edge" x="848" y="250" text-anchor="middle">pictures</text>
+    <!-- You look first to The PR -->
+    <path class="wire" d="M 1086 261 H 1142" marker-end="url(#arrow)" />
+    <text class="edge" x="1114" y="250" text-anchor="middle">--publish</text>
+
+    <!-- Legend -->
+    <line class="rule" x1="48" y1="466" x2="1352" y2="466" />
+    <text class="legend" x="48" y="496">Filled: your call. Marigold: the machine at work. The code branch stays light: pictures never merge.</text>
+  </svg>
+</body>
+</html>
