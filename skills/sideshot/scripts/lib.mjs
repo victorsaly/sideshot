@@ -461,8 +461,14 @@ export function runOf(runs, key) {
     Array.isArray(kept.same) &&
     kept.same.every((s) => typeof s === 'string') &&
     (kept.nothing === null || typeof kept.nothing === 'string') &&
-    (kept.whole === undefined || (Array.isArray(kept.whole) && kept.whole.every((s) => typeof s === 'string')));
-  return shaped ? { same: kept.same, nothing: kept.nothing, whole: kept.whole ?? [] } : { same: [], nothing: null, whole: [] };
+    (kept.whole === undefined || (Array.isArray(kept.whole) && kept.whole.every((s) => typeof s === 'string'))) &&
+    (kept.texts === undefined ||
+      (typeof kept.texts === 'object' && kept.texts !== null && !Array.isArray(kept.texts) &&
+        Object.values(kept.texts).every((v) => Array.isArray(v) && v.every((s) => typeof s === 'string')))) &&
+    (kept.loupes === undefined || typeof kept.loupes === 'boolean');
+  return shaped
+    ? { same: kept.same, nothing: kept.nothing, whole: kept.whole ?? [], texts: kept.texts ?? {}, loupes: kept.loupes ?? false }
+    : { same: [], nothing: null, whole: [], texts: {}, loupes: false };
 }
 
 /** What a run is known by, beside its pictures: its page, parts, devices and schemes. Two runs for one pull request
@@ -502,7 +508,58 @@ export const nothingTableOf = ({ why, before, after, page }) =>
 
 /** The before and after table, in Markdown, for the pictures that were taken (files). Pairs the same before and
  * after were not kept, and are named under it. */
-export function tableOf({ parts, chosen, schemes, notes, files, before, after, page, slug, branch, pr, same = [], markChanges = false, whole = [] }) {
+/** What the part's words say that they did not, or said that they do not: the stretches that changed, each with
+ * three words round it, what went struck through and what came in bold. Nothing when the words are the same. A
+ * mark cannot say which word changed; the page's own text can. */
+export function textDiffOf(before, after) {
+  // Up to this many words a side: a part longer than that is a page, and its diff a scroll.
+  const most = 1500, context = 3, longest = 18, stretches = 4;
+  const wordsOf = (text) => String(text ?? '').split(/\s+/).filter(Boolean).slice(0, most);
+  const A = wordsOf(before), B = wordsOf(after), n = A.length, m = B.length;
+  const L = new Uint16Array((n + 1) * (m + 1));
+  for (let i = n - 1; i >= 0; i--)
+    for (let j = m - 1; j >= 0; j--)
+      L[i * (m + 1) + j] = A[i] === B[j] ? L[(i + 1) * (m + 1) + j + 1] + 1 : Math.max(L[(i + 1) * (m + 1) + j], L[i * (m + 1) + j + 1]);
+  const ops = [];
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (A[i] === B[j]) ops.push(['=', A[i++]]), j++;
+    else if (L[(i + 1) * (m + 1) + j] >= L[i * (m + 1) + j + 1]) ops.push(['-', A[i++]]);
+    else ops.push(['+', B[j++]]);
+  }
+  while (i < n) ops.push(['-', A[i++]]);
+  while (j < m) ops.push(['+', B[j++]]);
+  // The words as words, not as Markdown: a star or a bracket in them stays one.
+  const plain = (w) => w.replace(/[\\*_~`<[]/g, (ch) => `\\${ch}`);
+  const lines = [];
+  for (let k = 0; k < ops.length && lines.length < stretches; ) {
+    if (ops[k][0] === '=') {
+      k++;
+      continue;
+    }
+    // A stretch runs until three unchanged words in a row.
+    let end = k;
+    while (end < ops.length && !(ops[end][0] === '=' && ops[end + 1]?.[0] === '=' && ops[end + 2]?.[0] === '=')) end++;
+    const piece = ops.slice(Math.max(0, k - context), k).map(([, w]) => plain(w));
+    let cut = false;
+    for (let at = k; at < end; ) {
+      const kind = ops[at][0];
+      let to = at;
+      while (to < end && ops[to][0] === kind) to++;
+      const words = ops.slice(at, Math.min(to, at + longest)).map(([, w]) => plain(w));
+      if (to - at > longest) cut = true;
+      piece.push(kind === '=' ? words.join(' ') : kind === '-' ? `~~${words.join(' ')}~~` : `**${words.join(' ')}**`);
+      at = to;
+    }
+    if (!cut) piece.push(...ops.slice(end, end + context).map(([, w]) => plain(w)));
+    const more = cut || end + context < ops.length;
+    lines.push(`${k > context ? '… ' : ''}${piece.join(' ')}${more ? ' …' : ''}`);
+    k = end;
+  }
+  return lines;
+}
+
+export function tableOf({ parts, chosen, schemes, notes, files, before, after, page, slug, branch, pr, same = [], markChanges = false, whole = [], texts = {}, loupes = false }) {
   // Through github.com, not raw.githubusercontent.com: that answers 404 for a private repository, even to those who
   // can read it, where github.com sends them on with their sign-in. The branch in full (refs/heads/), so one with a
   // slash in it is not taken for part of the path.
@@ -522,6 +579,9 @@ export function tableOf({ parts, chosen, schemes, notes, files, before, after, p
         );
         const cell = (f) => (files.has(f) ? `<img src="${url(f)}" width="420">` : '(not there)');
         lines.push(`| ${cell(b)} | ${cell(a)} |`, '');
+        // What the words say now that they did not, under the pair: a mark cannot name the word.
+        const said = Object.hasOwn(texts, a) ? texts[a] : [];
+        if (said.length > 0) lines.push(...said.map((line) => `<sub>Text: ${line}</sub>`), '');
       }
     }
   }
@@ -530,7 +590,10 @@ export function tableOf({ parts, chosen, schemes, notes, files, before, after, p
   // What the marks mean, for a reader who has not met SideShot, and where a part was boxed once for differing
   // nearly everywhere, which is a style change more often than many.
   if (markChanges)
-    lines.push('<sub>Boxed: added or changed · dashed rule: taken out · dashed box on before: where it was.</sub>', '');
+    lines.push(
+      `<sub>Boxed: added or changed · dashed rule: taken out · dashed box on before: where it was${loupes ? ' · inset: a small change at 3×' : ''}.</sub>`,
+      '',
+    );
   if (whole.length > 0)
     lines.push(
       `<sub>Most of the part differs on ${whole.join(', ')}, so it is boxed once: likely a style change (colour, font, spacing).</sub>`,

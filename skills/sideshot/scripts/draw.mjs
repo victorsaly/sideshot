@@ -42,7 +42,7 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
   const b = await load(src);
   const c = new OffscreenCanvas(b.width, b.height), x = c.getContext('2d');
   x.drawImage(b, 0, 0);
-  let changed = 0, whole = false, gone = [];
+  let changed = 0, whole = false, gone = [], loupes = 0;
   if (before) {
     const a = await load(before);
     const pixelsOf = (img) => {
@@ -340,6 +340,52 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
     // A little above the line that follows, so the rule sits in the gap rather than on the words.
     for (const [y, from, to] of rules) { const ry = Math.max(4, y - 8); x.beginPath(); x.moveTo(from, ry); x.lineTo(Math.min(b.width - 6, to), ry); x.stroke(); }
     x.setLineDash([]);
+    // A change under 40 CSS pixels each way (a dot, an icon, a radius) is hard to see at a phone's size: it is
+    // shown again at three times its size, in an inset placed where it covers the least ink, beside the change,
+    // at the end of its line, or in a corner, joined to it by a thin line.
+    const small = 40 * scale, times = 3, most = 150 * scale, pad = 14 * scale, around = 8 * scale;
+    for (const [l, t, r, btm] of boxes) {
+      if (r - l >= small || btm - t >= small) continue;
+      loupes++;
+      const rl = Math.max(0, l - around), rt = Math.max(0, t - around), rr = Math.min(b.width, r + around), rb = Math.min(b.height, btm + around);
+      const rw = rr - rl, rh = rb - rt, mag = Math.min(times, most / Math.max(rw, rh));
+      const w = rw * mag, h = rh * mag, cx = (l + r) / 2, cy = (t + btm) / 2;
+      const clamp = (p) => [Math.min(b.width - w - pad, Math.max(pad, p[0])), Math.min(b.height - h - pad, Math.max(pad, p[1]))];
+      const spots = [
+        [r + 24 * scale, cy - h / 2], [l - 24 * scale - w, cy - h / 2], [cx - w / 2, btm + 24 * scale], [cx - w / 2, t - 24 * scale - h],
+        [b.width - w - pad, cy - h / 2], [pad, cy - h / 2], [pad, pad], [b.width - w - pad, pad], [pad, b.height - h - pad],
+      ]
+        .map(clamp)
+        .filter((p) => p[0] > r + 12 * scale || p[0] + w < l - 12 * scale || p[1] > btm + 12 * scale || p[1] + h < t - 12 * scale);
+      const ink = (p) => {
+        let n = 0, all = 0;
+        for (let yy = Math.floor(p[1]); yy < p[1] + h; yy += 4)
+          for (let xx = Math.floor(p[0]); xx < p[0] + w; xx += 4, all++) {
+            const k = (yy * B.w + xx) * 4;
+            if (Math.abs(B.d[k] - B.d[0]) + Math.abs(B.d[k + 1] - B.d[1]) + Math.abs(B.d[k + 2] - B.d[2]) > 60) n++;
+          }
+        return n / Math.max(1, all);
+      };
+      const dist = (p) => (p[0] + w / 2 - cx) ** 2 + (p[1] + h / 2 - cy) ** 2;
+      const scored = (spots.length > 0 ? spots : [[pad, pad]]).map((p) => ({ p, ink: ink(p) }));
+      const least = Math.min(...scored.map((q) => q.ink));
+      const [ix, iy] = scored.filter((q) => q.ink <= least + 0.01).map((q) => q.p).reduce((best, p) => (dist(p) < dist(best) ? p : best));
+      // The line joins the nearer edges, across or down, whichever way the inset lies.
+      const dx = ix + w / 2 - cx, dy = iy + h / 2 - cy, mid = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+      x.lineWidth = 2 * scale; x.strokeStyle = colour; x.beginPath();
+      if (Math.abs(dx) > Math.abs(dy)) { x.moveTo(dx > 0 ? r : l, cy); x.lineTo(dx > 0 ? ix : ix + w, mid(cy, iy, iy + h)); }
+      else { x.moveTo(cx, dy > 0 ? btm : t); x.lineTo(mid(cx, ix, ix + w), dy > 0 ? iy : iy + h); }
+      x.stroke();
+      x.save(); x.imageSmoothingEnabled = false;
+      x.fillStyle = '#ffffff'; x.fillRect(ix, iy, w, h);
+      x.drawImage(b, rl, rt, rw, rh, ix, iy, w, h);
+      x.restore();
+      x.lineWidth = 4 * scale; x.strokeStyle = colour; x.strokeRect(ix, iy, w, h);
+      x.fillStyle = colour; x.fillRect(ix, iy + h - 18 * scale, 34 * scale, 18 * scale);
+      x.fillStyle = '#000000'; x.font = `700 ${11 * scale}px system-ui, -apple-system, sans-serif`;
+      x.textAlign = 'center'; x.textBaseline = 'middle';
+      x.fillText(`${mag.toFixed(0)}×`, ix + 17 * scale, iy + h - 9 * scale);
+    }
     changed = boxes.length + rules.length + swallowed;
   }
   // The number is black or white, whichever reads better on the colour.
@@ -447,7 +493,7 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
   const bytes = new Uint8Array(await blob.arrayBuffer());
   let bin = '';
   for (let k = 0; k < bytes.length; k += 0x8000) bin += String.fromCharCode(...bytes.subarray(k, k + 0x8000));
-  return { png: btoa(bin), changed, gone, whole };
+  return { png: btoa(bin), changed, gone, whole, loupes };
 }
 
 /** Runs in the page: dashed boxes on a picture where what was taken out was (gone, from finish), in the colour. */

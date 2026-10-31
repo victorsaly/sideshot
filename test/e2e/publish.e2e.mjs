@@ -122,6 +122,8 @@ esac
     assert.match(text, /^Fixes the pricing card\.\n\n<!-- sideshot:start -->/);
     const link = 'https://github.com/test-owner/test-repo/raw/refs/heads/sideshot/5/card-desk-after.png';
     assert.ok(text.includes(`<img src="${link}"`), text);
+    // The words the badge brought, said under the pair.
+    assert.match(text, /\n<sub>Text: … Free, and more\. \*\*New: priority support\*\*<\/sub>\n/);
     // gh asked first whether it is signed in; then bound to origin's repository, whatever gh would pick by itself.
     assert.match(
       readFileSync(calls, 'utf8'),

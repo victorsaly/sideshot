@@ -28,6 +28,7 @@ import {
   ringsWithin,
   runOf,
   runsOf,
+  textDiffOf,
   runKeyOf,
   seenOf,
   sheetsOf,
@@ -400,6 +401,17 @@ describe('tableOf', () => {
     assert.ok(t.includes('<sub>Most of the part differs on hero on desk, hero on phone, so it is boxed once: likely a style change (colour, font, spacing).</sub>'), t);
     assert.doesNotMatch(table(['hero-desk-after.png'], { markChanges: true }), /Most of the part/);
   });
+  it('says what text changed under a pair, when it did', () => {
+    const t = table(['hero-desk-before.png', 'hero-desk-after.png'], {
+      texts: { 'hero-desk-after.png': ['… Free, and more. ~~Merging opens~~ Approve **and merge**'] },
+    });
+    assert.match(t, /\| <img[^\n]*\|\n\n<sub>Text: … Free, and more\. ~~Merging opens~~ Approve \*\*and merge\*\*<\/sub>\n/);
+    assert.doesNotMatch(table(['hero-desk-before.png', 'hero-desk-after.png']), /Text:/);
+  });
+  it('names the inset in the key only when a picture has one', () => {
+    assert.match(table(['hero-desk-after.png'], { markChanges: true, loupes: true }), /where it was · inset: a small change at 3×\.<\/sub>/);
+    assert.doesNotMatch(table(['hero-desk-after.png'], { markChanges: true }), /inset/);
+  });
   it('lists the notes and where before and after came from', () => {
     const t = table(['hero-desk-after.png']);
     assert.match(t, /\*\*What changed\*\*\n\n1\. Bigger button/);
@@ -413,6 +425,30 @@ describe('tableOf', () => {
     });
     assert.ok(t.includes('Before: https://preview.example.com/pricing · After: run locally'), t);
     assert.doesNotMatch(t, /someone|not-a-real/);
+  });
+});
+
+describe('textDiffOf', () => {
+  it('says the words that went and the words that came, with a few words round them', () => {
+    const was = 'Pro plan Everything in Free, and more. Merging opens when they finish; this page shows it. Approve';
+    const now = 'Pro plan Everything in Free, and more. Approve and merge';
+    assert.deepEqual(textDiffOf(was, now), [
+      '… Free, and more. ~~Merging opens when they finish; this page shows it.~~ Approve **and merge**',
+    ]);
+  });
+  it('says nothing when the words are the same, whatever the spacing', () => {
+    assert.deepEqual(textDiffOf('a  b\nc', 'a b c'), []);
+    assert.deepEqual(textDiffOf('', ''), []);
+  });
+  it('keeps each stretch short, and says there is more', () => {
+    const many = Array.from({ length: 80 }, (_, i) => `w${String(i)}`).join(' ');
+    const [line, ...rest] = textDiffOf('start end', `start ${many} end`);
+    assert.equal(rest.length, 0);
+    assert.ok(line.split(' ').length <= 48, line);
+    assert.match(line, /…$/);
+  });
+  it('keeps Markdown in the words from rendering', () => {
+    assert.deepEqual(textDiffOf('a', 'a *b* <i>'), ['a **\\*b\\* \\<i>**']);
   });
 });
 
@@ -551,11 +587,16 @@ describe('runsOf and runOf', () => {
   });
   it('gives a run what it found, or nothing found when what is kept is not in that shape', () => {
     const runs = { a: { same: ['x'], nothing: null }, b: { same: [], nothing: 'Nothing to compare.' } };
-    assert.deepEqual(runOf(runs, 'a'), { same: ['x'], nothing: null, whole: [] });
-    assert.deepEqual(runOf(runs, 'b'), { same: [], nothing: 'Nothing to compare.', whole: [] });
-    assert.deepEqual(runOf({ c: { same: [], nothing: null, whole: ['y'] } }, 'c'), { same: [], nothing: null, whole: ['y'] });
-    const none = { same: [], nothing: null, whole: [] };
-    for (const kept of [undefined, null, 'x', { same: 'x' }, { same: [1] }, { same: [], nothing: 4 }, { same: [], nothing: null, whole: 'y' }])
+    assert.deepEqual(runOf(runs, 'a'), { same: ['x'], nothing: null, whole: [], texts: {}, loupes: false });
+    assert.deepEqual(runOf(runs, 'b'), { same: [], nothing: 'Nothing to compare.', whole: [], texts: {}, loupes: false });
+    assert.deepEqual(runOf({ c: { same: [], nothing: null, whole: ['y'] } }, 'c'), { same: [], nothing: null, whole: ['y'], texts: {}, loupes: false });
+    assert.deepEqual(
+      runOf({ d: { same: [], nothing: null, texts: { 'a-desk-after.png': ['x **y**'] }, loupes: true } }, 'd'),
+      { same: [], nothing: null, whole: [], texts: { 'a-desk-after.png': ['x **y**'] }, loupes: true },
+    );
+    const none = { same: [], nothing: null, whole: [], texts: {}, loupes: false };
+    for (const kept of [undefined, null, 'x', { same: 'x' }, { same: [1] }, { same: [], nothing: 4 }, { same: [], nothing: null, whole: 'y' },
+      { same: [], nothing: null, texts: ['x'] }, { same: [], nothing: null, texts: { a: 'x' } }, { same: [], nothing: null, loupes: 1 }])
       assert.deepEqual(runOf({ k: kept }, 'k'), none, JSON.stringify(kept));
     assert.deepEqual(runOf({}, '__proto__'), none);
   });
