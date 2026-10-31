@@ -10,7 +10,7 @@
   one. With the skill alone, the README says how to turn the same reminder on in Claude Code; for other agents, it
   gives the line to put in `AGENTS.md`.
 
-## 0.5.7 (unreleased)
+## 0.5.7 (2026-10-31)
 
 - **`--mark-changes` boxes the one thing that changed in a row, not the row.** A block that replaced rows of the
   same height in the same place (a button's colour, a word, an icon) was boxed around everything inked in those
