@@ -112,6 +112,52 @@ describe('draw.mjs', () => {
     assert.ok(box.top >= 76 && box.bottom <= 124, `box spans rows ${box.top} to ${box.bottom}`);
   });
 
+  // Two buttons in a row inside a card, the first one changed from grey to ink: the rows across them differ, though
+  // the second button is as it was.
+  const buttons = (first) => ({
+    width: 400,
+    height: 140,
+    rects: [
+      [20, 20, 360, 1, '#999999'],
+      [20, 20, 1, 100, '#999999'],
+      [379, 20, 1, 100, '#999999'],
+      [20, 120, 360, 1, '#999999'],
+      [40, 50, 100, 24, first],
+      [160, 50, 100, 24, '#222222'],
+    ],
+  });
+
+  it('boxes the one button that changed in a row of two, not the row', async () => {
+    const { changed, runs } = await marked(buttons('#808080'), buttons('#111111'));
+    assert.equal(changed, 1, JSON.stringify(runs));
+    assert.equal(runs.length, 1, JSON.stringify(runs));
+    const [box] = runs;
+    // The first button is 40 to 140 across; the box sits a few pixels outside it and clear of the second, at 160.
+    assert.ok(box.left >= 26 && box.right < 160, `box spans ${box.left} to ${box.right}`);
+    assert.ok(box.top >= 36 && box.bottom <= 88, `box spans rows ${box.top} to ${box.bottom}`);
+  });
+
+  it('boxes a button whose colour changed a little, as much as a hover state does', async () => {
+    // Grey to a lighter grey, 54 apart over the three channels: more than a rounding, less than the 60 that tells
+    // ink from the row above.
+    const { changed, runs } = await marked(buttons('#808080'), buttons('#929292'));
+    assert.equal(changed, 1, JSON.stringify(runs));
+    assert.ok(runs.length === 1 && runs[0].left >= 26 && runs[0].right < 160, JSON.stringify(runs));
+  });
+
+  it('boxes a dot that changed colour beside a line of text, not the line', async () => {
+    const line = (dot) => ({
+      width: 400,
+      height: 100,
+      rects: [[20, 20, 360, 1, '#999999'], [40, 50, 10, 10, dot], [60, 50, 240, 10, '#222222']],
+    });
+    const { changed, runs } = await marked(line('#9a9a9a'), line('#1f9d55'));
+    assert.equal(changed, 1, JSON.stringify(runs));
+    assert.equal(runs.length, 1, JSON.stringify(runs));
+    // The dot is 40 to 50 across; the box sits a few pixels outside it, short of the words at 60.
+    assert.ok(runs[0].left >= 26 && runs[0].right <= 64, `box spans ${runs[0].left} to ${runs[0].right}, over the words`);
+  });
+
   it('marks only the card that changed when two sit side by side', async () => {
     // Two cards in a row, the right one given a badge that makes it taller: rows across both differ from the
     // badge down, though the left card is as it was.
