@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.7 (unreleased)
+
+- **`--mark-changes` boxes the one thing that changed in a row, not the row.** A block that replaced rows of the
+  same height in the same place (a button's colour, a word, an icon) was boxed around everything inked in those
+  rows, measured against the row above, so a changed button took the button beside it into its box, and a dot
+  that turned green took the line of text beside it. Such a block is now compared with the rows it replaced, and
+  boxed around what differs from them: the button, the dot. A block that is new, or taller or shorter than what it
+  replaced, is boxed as before.
+
 ## 0.5.6 (2026-10-29)
 
 - **`--mark-changes` marks what changed, not lines that only moved a pixel.** A page's lines sit at fractional

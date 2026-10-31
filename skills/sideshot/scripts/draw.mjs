@@ -119,7 +119,11 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
       // blocks), or when its rows are nowhere in "after"; space that only shrank is not.
       const inAfter = new Set(HB);
       const added = new Uint8Array(B.h), cuts = [];
-      const cut = (run, y) => { if (isContent(A, run.start) || !inAfter.has(run.hash)) cuts.push({ y, run }); };
+      const taken = [];
+      const cut = (run, y) => {
+        taken.push({ y, run });
+        if (isContent(A, run.start) || !inAfter.has(run.hash)) cuts.push({ y, run });
+      };
       // Where each row of "after" was in "before", as rows to add: known where rows lined up, and for what did
       // not, taken from the nearest row above that did.
       const toA = new Float64Array(B.h).fill(NaN);
@@ -178,17 +182,29 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
       const onlyMoved = (l, t, r, btm, dy) =>
         t >= 0 && btm <= B.h && t + dy >= 0 && btm + dy <= A.h &&
         stillNear(B, A, l, t, r, btm, dy) && stillNear(A, B, x0, t + dy, x1, btm + dy, -dy);
-      // What was added is boxed around what differs from the unchanged row next to it (above, or below at the
-      // top), not from the background: a card's border runs down both, so it does not stretch the box.
+      // What was added where rows were taken out, and is as tall as they were, replaced them in place: a colour,
+      // a word, an icon. It is boxed around what differs from those rows, so the button that changed is boxed,
+      // not the row of buttons it sits in. Anything else is boxed around what differs from the unchanged row
+      // next to it (above, or below at the top), not from the background: a card's border runs down both, so it
+      // does not stretch the box.
+      const replacedBy = (y, y1) => {
+        const runs = taken.filter((c) => c.y === y).map((c) => c.run);
+        if (runs.length === 0 || A.w !== B.w) return -1;
+        const start = Math.min(...runs.map((r) => r.start)), end = Math.max(...runs.map((r) => r.end));
+        const whole = runs.reduce((h, r) => h + r.end - r.start, 0) === end - start;
+        return whole && end - start === y1 - y + 1 ? start : -1;
+      };
       const boxes = [];
       for (let y = 0; y < B.h; y++) {
         if (!added[y]) continue;
         let y1 = y;
         while (y1 + 1 < B.h && added[y1 + 1]) y1++;
+        const from = replacedBy(y, y1);
         const ref = y > 0 ? y - 1 : y1 + 1 < B.h ? y1 + 1 : -1;
         const differs = (yy, xx) => {
-          const k = (yy * B.w + xx) * 4, r = ref === -1 ? 0 : (ref * B.w + xx) * 4;
-          return Math.abs(B.d[k] - B.d[r]) + Math.abs(B.d[k + 1] - B.d[r + 1]) + Math.abs(B.d[k + 2] - B.d[r + 2]) > 60;
+          const k = (yy * B.w + xx) * 4;
+          const Q = from >= 0 ? A : B, r = from >= 0 ? ((from + yy - y) * A.w + xx) * 4 : ref === -1 ? 0 : (ref * B.w + xx) * 4;
+          return Math.abs(B.d[k] - Q.d[r]) + Math.abs(B.d[k + 1] - Q.d[r + 1]) + Math.abs(B.d[k + 2] - Q.d[r + 2]) > 60;
         };
         let bx0 = x1, bx1 = -1, t = -1, btm = -1;
         for (let yy = y; yy <= y1; yy++)
@@ -199,7 +215,8 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
               if (t === -1) t = yy;
               btm = yy;
             }
-        if (bx1 >= 0 && btm - t >= 2 && !onlyMoved(bx0, t, bx1 + 1, btm + 1, toA[t])) boxes.push([bx0, t, bx1 + 1, btm + 1]);
+        const dy = from >= 0 ? from - y : toA[t];
+        if (bx1 >= 0 && btm - t >= 2 && !onlyMoved(bx0, t, bx1 + 1, btm + 1, dy)) boxes.push([bx0, t, bx1 + 1, btm + 1]);
         y = y1;
       }
       // Where something was only taken out, a short rule marks the place it was, within the column: inset by
