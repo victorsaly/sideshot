@@ -549,10 +549,11 @@ export function isPrPush(command) {
 // What people see: styles, markup and components, images and fonts, and a theme's settings. Tests and stories of
 // those are for the people working on them, and what is under .github never shows on a page.
 const seenFile = /\.(?:css|scss|sass|less|styl|pcss|html?|jsx|tsx|vue|svelte|astro|mdx|erb|hbs|handlebars|njk|liquid|twig|ejs|pug|svg|png|jpe?g|gif|webp|avif|ico|woff2?|ttf|otf)$|(?:^|\/)tailwind\.config\.[cm]?[jt]s$/i;
-const unseenFile = /(?:^|\/)(?:__tests__|__snapshots__|tests?|e2e|\.storybook|\.github)\/|\.(?:test|spec|stories)\.[^/]+$/i;
+const unseenFolder = /(?:^|\/)(?:__tests__|__snapshots__|tests?|e2e|\.storybook|\.github)\//i;
+const unseenFile = /\.(?:test|spec|stories)\.[^/]+$/i;
 
 /** The files among these that change what people see. */
-export const seenOf = (files) => files.filter((f) => seenFile.test(f) && !unseenFile.test(f));
+export const seenOf = (files) => files.filter((f) => seenFile.test(f) && !unseenFolder.test(f) && !unseenFile.test(f));
 
 /** Whether the reminder is turned off everywhere: SIDESHOT_REMIND=off in the environment, which Claude Code passes
  * on from the "env" of ~/.claude/settings.json. "remind": false in .sideshot.json is for one project. */
