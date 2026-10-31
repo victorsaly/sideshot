@@ -42,7 +42,7 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
   const b = await load(src);
   const c = new OffscreenCanvas(b.width, b.height), x = c.getContext('2d');
   x.drawImage(b, 0, 0);
-  let changed = 0;
+  let changed = 0, whole = false, gone = [];
   if (before) {
     const a = await load(before);
     const pixelsOf = (img) => {
@@ -133,11 +133,16 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
       // land a pixel higher or lower than it was, and the space between two of them grow or shrink by up to 2.
       // Beside a gutter that runs down every row (a diff's + column), that space reads as content.
       const rounding = 2;
+      // What is left of "before" once "after" is spent is cut at the foot of the picture, unless the last stretch
+      // that lined up was space that grew (blank page under a block taken out lines up with the blank above it):
+      // then where that space was as tall as it had been, the place the block stood in.
+      let tail = B.h - 1;
       let i = 0, j = 0;
       while (i < n && j < m) {
         if (same(i, j)) {
           const was = RA[i].end - RA[i].start, now = RB[j].end - RB[j].start;
           toA.fill(RA[i].start - RB[j].start, RB[j].start, RB[j].end);
+          tail = now > was && !isContent(B, RB[j].start) ? Math.min(B.h - 1, RB[j].start + was) : B.h - 1;
           if (Math.abs(now - was) > rounding && isContent(B, RB[j].start)) {
             if (now > was) added.fill(1, RB[j].start, RB[j].end);
             else cuts.push({ y: RB[j].end, run: null });
@@ -148,7 +153,7 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
         else { added.fill(1, RB[j].start, RB[j].end); j++; }
       }
       for (; j < m; j++) added.fill(1, RB[j].start, RB[j].end);
-      for (; i < n; i++) cut(RA[i], B.h - 1);
+      for (; i < n; i++) cut(RA[i], tail);
       let known = toA.find((d) => !Number.isNaN(d)) ?? 0;
       for (let y = 0; y < B.h; y++) if (Number.isNaN(toA[y])) toA[y] = known; else known = toA[y];
       // What only moved by rounding, a label a pixel or two higher in a button that did not move, its icon and its
@@ -240,21 +245,77 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
           return !onlyMoved(x0, y, x1, y + btm - t, t - y);
         })
         .map(([y]) => y);
+      // Where what was taken out was, on "before": the runs taken out at one place, together, boxed around what
+      // differs from the row above them or, when a block as tall took their place, from that block, so a button
+      // that changed is boxed on both sides. Not what only moved by a rounding, as on "after".
+      const blocks = [];
+      for (const { y, run } of taken) {
+        const last = blocks[blocks.length - 1];
+        if (last && last.at === y && last.end === run.start) last.end = run.end;
+        else blocks.push({ at: y, start: run.start, end: run.end });
+      }
+      const gone = [];
+      for (const { at, start, end } of blocks) {
+        let y1 = at;
+        while (y1 + 1 < B.h && added[y1 + 1]) y1++;
+        const replaced = added[at] && (at === 0 || !added[at - 1]) && y1 === at + end - start - 1 && replacedBy(at, y1) === start;
+        const ref = start > 0 ? start - 1 : end < A.h ? end : -1;
+        const differs = (yy, xx) => {
+          const k = (yy * A.w + xx) * 4;
+          const Q = replaced ? B : A, r = replaced ? ((at + yy - start) * B.w + xx) * 4 : ref === -1 ? 0 : (ref * A.w + xx) * 4;
+          return Math.abs(A.d[k] - Q.d[r]) + Math.abs(A.d[k + 1] - Q.d[r + 1]) + Math.abs(A.d[k + 2] - Q.d[r + 2]) > (replaced ? alike : 60);
+        };
+        let bx0 = x1, bx1 = -1, t = -1, btm = -1;
+        for (let yy = start; yy < end; yy++)
+          for (let xx = x0; xx < x1; xx++)
+            if (differs(yy, xx)) {
+              if (xx < bx0) bx0 = xx;
+              if (xx > bx1) bx1 = xx;
+              if (t === -1) t = yy;
+              btm = yy;
+            }
+        if (bx1 >= 0 && btm - t >= 2 && !onlyMoved(bx0, at + t - start, bx1 + 1, at + btm + 1 - start, start - at))
+          gone.push([bx0, t, bx1 + 1, btm + 1]);
+      }
       const inset = Math.min(6, Math.floor(cw / 4));
       return {
         boxes,
+        gone,
         rules: rules.map((y) => [y, x0 + inset, Math.max(x0 + inset + 12, Math.min(x1 - inset, x0 + 600))]),
       };
     };
     const marks = columnsOf().map(marksIn);
-    const boxes = marks.flatMap((mk) => mk.boxes), rules = marks.flatMap((mk) => mk.rules);
+    let boxes = marks.flatMap((mk) => mk.boxes), rules = marks.flatMap((mk) => mk.rules);
+    gone = marks.flatMap((mk) => mk.gone);
+    // A ring that covers a box, half of it or more, says it already, with its number: the box is left out, and
+    // the change still counted, since it is marked.
+    const ringBoxes = rings.map((r) => {
+      const l = (r.x - 6) * scale, t = (r.y - 6) * scale;
+      return [l, t, l + (r.w + 12) * scale, t + (r.h + 12) * scale];
+    });
+    const covered = (bx) => ringBoxes.some((rb) => {
+      const w = Math.min(bx[2], rb[2]) - Math.max(bx[0], rb[0]), h = Math.min(bx[3], rb[3]) - Math.max(bx[1], rb[1]);
+      return w > 0 && h > 0 && w * h >= 0.5 * (bx[2] - bx[0]) * (bx[3] - bx[1]);
+    });
+    const swallowed = boxes.filter(covered).length;
+    boxes = boxes.filter((bx) => !covered(bx));
+    // Four boxes or more, spread over most of the part (60% of its height: more than any one block of it), are one
+    // change across it, a colour, a font, a spacing, boxed once and said in words, not a thicket of boxes.
+    const spread = 0.6;
+    const union = (bs) => bs.reduce((u, bx) => [Math.min(u[0], bx[0]), Math.min(u[1], bx[1]), Math.max(u[2], bx[2]), Math.max(u[3], bx[3])]);
+    if (boxes.length >= 4 && union(boxes)[3] - union(boxes)[1] >= spread * B.h) {
+      boxes = [union(boxes)];
+      rules = [];
+      gone = gone.length > 0 ? [union(gone)] : [];
+      whole = true;
+    }
     x.lineWidth = 6; x.strokeStyle = colour;
     for (const [l, t, r, btm] of boxes) { x.beginPath(); x.roundRect(Math.max(3, l - 8), Math.max(3, t - 8), r - l + 16, btm - t + 16, 12); x.stroke(); }
     x.setLineDash([14, 8]);
     // A little above the line that follows, so the rule sits in the gap rather than on the words.
     for (const [y, from, to] of rules) { const ry = Math.max(4, y - 8); x.beginPath(); x.moveTo(from, ry); x.lineTo(Math.min(b.width - 6, to), ry); x.stroke(); }
     x.setLineDash([]);
-    changed = boxes.length + rules.length;
+    changed = boxes.length + rules.length + swallowed;
   }
   // The number is black or white, whichever reads better on the colour.
   const lum = [1, 3, 5]
@@ -302,7 +363,21 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
   const bytes = new Uint8Array(await blob.arrayBuffer());
   let bin = '';
   for (let k = 0; k < bytes.length; k += 0x8000) bin += String.fromCharCode(...bytes.subarray(k, k + 0x8000));
-  return { png: btoa(bin), changed };
+  return { png: btoa(bin), changed, gone, whole };
+}
+
+/** Runs in the page: dashed boxes on a picture where what was taken out was (gone, from finish), in the colour. */
+export async function strike({ src, boxes, colour }) {
+  const img = await new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.src = src; });
+  const c = new OffscreenCanvas(img.width, img.height), x = c.getContext('2d');
+  x.drawImage(img, 0, 0);
+  x.lineWidth = 6; x.strokeStyle = colour; x.setLineDash([14, 8]);
+  for (const [l, t, r, btm] of boxes) { x.beginPath(); x.roundRect(Math.max(3, l - 8), Math.max(3, t - 8), r - l + 16, btm - t + 16, 12); x.stroke(); }
+  const blob = await c.convertToBlob({ type: 'image/png' });
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let bin = '';
+  for (let k = 0; k < bytes.length; k += 0x8000) bin += String.fromCharCode(...bytes.subarray(k, k + 0x8000));
+  return btoa(bin);
 }
 
 /** Runs in the page: one sheet of pairs, each before beside after, small, with what it is said above it. Made to

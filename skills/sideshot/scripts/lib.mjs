@@ -433,7 +433,7 @@ export function runsOf(text) {
   }
 }
 
-/** What one run found (pairs the same, or why there was nothing to compare), or nothing found when what is kept
+/** What one run found (pairs the same, parts boxed once for differing nearly everywhere, or why there was nothing to compare), or nothing found when what is kept
  * for it is not in that shape: it goes into a pull request's description, so only what SideShot itself writes. */
 export function runOf(runs, key) {
   const kept = Object.hasOwn(runs, key) ? runs[key] : null;
@@ -442,8 +442,9 @@ export function runOf(runs, key) {
     kept !== null &&
     Array.isArray(kept.same) &&
     kept.same.every((s) => typeof s === 'string') &&
-    (kept.nothing === null || typeof kept.nothing === 'string');
-  return shaped ? { same: kept.same, nothing: kept.nothing } : { same: [], nothing: null };
+    (kept.nothing === null || typeof kept.nothing === 'string') &&
+    (kept.whole === undefined || (Array.isArray(kept.whole) && kept.whole.every((s) => typeof s === 'string')));
+  return shaped ? { same: kept.same, nothing: kept.nothing, whole: kept.whole ?? [] } : { same: [], nothing: null, whole: [] };
 }
 
 /** What a run is known by, beside its pictures: its page, parts, devices and schemes. Two runs for one pull request
@@ -483,7 +484,7 @@ export const nothingTableOf = ({ why, before, after, page }) =>
 
 /** The before and after table, in Markdown, for the pictures that were taken (files). Pairs the same before and
  * after were not kept, and are named under it. */
-export function tableOf({ parts, chosen, schemes, notes, files, before, after, page, slug, branch, pr, same = [] }) {
+export function tableOf({ parts, chosen, schemes, notes, files, before, after, page, slug, branch, pr, same = [], markChanges = false, whole = [] }) {
   // Through github.com, not raw.githubusercontent.com: that answers 404 for a private repository, even to those who
   // can read it, where github.com sends them on with their sign-in. The branch in full (refs/heads/), so one with a
   // slash in it is not taken for part of the path.
@@ -508,6 +509,15 @@ export function tableOf({ parts, chosen, schemes, notes, files, before, after, p
   }
   // A pair left out for showing no change is still said: the reviewer knows it was looked at.
   if (same.length > 0) lines.push(`<sub>The same before and after, so not shown: ${same.join(', ')}.</sub>`, '');
+  // What the marks mean, for a reader who has not met SideShot, and where a part was boxed once for differing
+  // nearly everywhere, which is a style change more often than many.
+  if (markChanges)
+    lines.push('<sub>Boxed: added or changed · dashed rule: taken out · dashed box on before: where it was.</sub>', '');
+  if (whole.length > 0)
+    lines.push(
+      `<sub>Most of the part differs on ${whole.join(', ')}, so it is boxed once: likely a style change (colour, font, spacing).</sub>`,
+      '',
+    );
   // The numbered rings on the "after" pictures, said in words.
   if (notes.length > 0)
     lines.push('**What changed**', '', ...notes.map((note) => `${String(note.n)}. ${note.text}`), '');

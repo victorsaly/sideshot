@@ -1,6 +1,20 @@
 # Changelog
 
-## 0.5.7 (2026-10-31)
+## 0.5.8 (unreleased)
+
+- **The before picture shows where what was taken out was**, in a dashed box, where it showed nothing: the
+  reviewer no longer hunts for the paragraph the rule on the after picture stands for. It keeps a plain copy too.
+- **The table says what the marks mean**, in one line under the pictures, when `--mark-changes` is on: boxed,
+  added or changed; dashed rule, taken out; dashed box on before, where it was.
+- **A part that differs nearly everywhere is boxed once**, and the run and the table say so: four boxes or more
+  spread over most of a part's height are a colour, a font or a spacing that changed, not that many changes.
+  Kept with the run, so `--update-pr --reuse` says it too.
+- **A ring no longer sits on a box.** A numbered note whose element covers a change box says it already: the box
+  is left out, and the change still counted.
+- **A block taken out at the end of a part is ruled where it was**, not at the foot of the picture. The blank
+  page under it lined up as well as the blank above it, and the rule went with what was left over.
+
+
 
 - **`--mark-changes` boxes the one thing that changed in a row, not the row.** A block that replaced rows of the
   same height in the same place (a button's colour, a word, an icon) was boxed around everything inked in those
