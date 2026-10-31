@@ -155,7 +155,9 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
       // words each rounded on their own, lines up with no row; yet every pixel of it is still there, within two
       // pixels of where it was, and every pixel that was there is still near. Both ways, so a mark that turned into
       // another in the same place (an upright stroke, now a flat one) is not taken for one that moved.
-      const near = 2, allowed = 4;
+      // Two pixels are alike when their channels differ by 48 or less in all: less than that is antialiasing, or
+      // a rounding that moved a glyph's edge; more is another colour, a hover state's grey for a button's.
+      const near = 2, allowed = 4, alike = 48;
       const stillNear = (P, Q, l, t, r, btm, dy) => {
         let missing = 0;
         for (let y = t; y < btm; y++)
@@ -169,7 +171,7 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
                 const qx = xx + ddx;
                 if (qx < 0 || qx >= Q.w) continue;
                 const q = (qy * Q.w + qx) * 4;
-                found = Math.abs(P.d[k] - Q.d[q]) + Math.abs(P.d[k + 1] - Q.d[q + 1]) + Math.abs(P.d[k + 2] - Q.d[q + 2]) <= 48;
+                found = Math.abs(P.d[k] - Q.d[q]) + Math.abs(P.d[k + 1] - Q.d[q + 1]) + Math.abs(P.d[k + 2] - Q.d[q + 2]) <= alike;
               }
             }
             if (!found && ++missing > allowed) return false;
@@ -183,10 +185,10 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
         t >= 0 && btm <= B.h && t + dy >= 0 && btm + dy <= A.h &&
         stillNear(B, A, l, t, r, btm, dy) && stillNear(A, B, x0, t + dy, x1, btm + dy, -dy);
       // What was added where rows were taken out, and is as tall as they were, replaced them in place: a colour,
-      // a word, an icon. It is boxed around what differs from those rows, so the button that changed is boxed,
+      // a word, an icon. It is boxed around what is not alike in those rows, so the button that changed is boxed,
       // not the row of buttons it sits in. Anything else is boxed around what differs from the unchanged row
       // next to it (above, or below at the top), not from the background: a card's border runs down both, so it
-      // does not stretch the box.
+      // does not stretch the box; there, ink against a row of background is 60 or more apart.
       const replacedBy = (y, y1) => {
         const runs = taken.filter((c) => c.y === y).map((c) => c.run);
         if (runs.length === 0 || A.w !== B.w) return -1;
@@ -204,7 +206,7 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
         const differs = (yy, xx) => {
           const k = (yy * B.w + xx) * 4;
           const Q = from >= 0 ? A : B, r = from >= 0 ? ((from + yy - y) * A.w + xx) * 4 : ref === -1 ? 0 : (ref * B.w + xx) * 4;
-          return Math.abs(B.d[k] - Q.d[r]) + Math.abs(B.d[k + 1] - Q.d[r + 1]) + Math.abs(B.d[k + 2] - Q.d[r + 2]) > 60;
+          return Math.abs(B.d[k] - Q.d[r]) + Math.abs(B.d[k + 1] - Q.d[r + 1]) + Math.abs(B.d[k + 2] - Q.d[r + 2]) > (from >= 0 ? alike : 60);
         };
         let bx0 = x1, bx1 = -1, t = -1, btm = -1;
         for (let yy = y; yy <= y1; yy++)

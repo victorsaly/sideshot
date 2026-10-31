@@ -137,6 +137,14 @@ describe('draw.mjs', () => {
     assert.ok(box.top >= 36 && box.bottom <= 88, `box spans rows ${box.top} to ${box.bottom}`);
   });
 
+  it('boxes a button whose colour changed a little, as much as a hover state does', async () => {
+    // Grey to a lighter grey, 54 apart over the three channels: more than a rounding, less than the 60 that tells
+    // ink from the row above.
+    const { changed, runs } = await marked(buttons('#808080'), buttons('#929292'));
+    assert.equal(changed, 1, JSON.stringify(runs));
+    assert.ok(runs.length === 1 && runs[0].left >= 26 && runs[0].right < 160, JSON.stringify(runs));
+  });
+
   it('boxes a dot that changed colour beside a line of text, not the line', async () => {
     const line = (dot) => ({
       width: 400,
