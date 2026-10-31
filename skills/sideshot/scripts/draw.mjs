@@ -311,20 +311,10 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
     const marks = columnsOf().map(marksIn);
     let boxes = marks.flatMap((mk) => mk.boxes), rules = marks.flatMap((mk) => mk.rules);
     gone = marks.flatMap((mk) => mk.gone);
-    // A ring that covers a box, half of it or more, says it already, with its number: the box is left out, and
-    // the change still counted, since it is marked.
-    const ringBoxes = rings.map((r) => {
-      const l = (r.x - 6) * scale, t = (r.y - 6) * scale;
-      return [l, t, l + (r.w + 12) * scale, t + (r.h + 12) * scale];
-    });
-    const covered = (bx) => ringBoxes.some((rb) => {
-      const w = Math.min(bx[2], rb[2]) - Math.max(bx[0], rb[0]), h = Math.min(bx[3], rb[3]) - Math.max(bx[1], rb[1]);
-      return w > 0 && h > 0 && w * h >= 0.5 * (bx[2] - bx[0]) * (bx[3] - bx[1]);
-    });
-    const swallowed = boxes.filter(covered).length;
-    boxes = boxes.filter((bx) => !covered(bx));
     // Four boxes or more, spread over most of the part (60% of its height: more than any one block of it), are one
-    // change across it, a colour, a font, a spacing, boxed once and said in words, not a thicket of boxes.
+    // change across it, a colour, a font, a spacing, boxed once and said in words, not a thicket of boxes. Judged
+    // on every box, those under a ring too: a ring over the middle of such a part must not leave a box round the
+    // rest that stops at the ring's content, its side running down through what the ring marks.
     const spread = 0.6;
     const union = (bs) => bs.reduce((u, bx) => [Math.min(u[0], bx[0]), Math.min(u[1], bx[1]), Math.max(u[2], bx[2]), Math.max(u[3], bx[3])]);
     if (boxes.length >= 4 && union(boxes)[3] - union(boxes)[1] >= spread * B.h) {
@@ -335,8 +325,25 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
       gone = [...(across.length > 0 ? [union(across)] : []), ...gone.filter((g) => !across.includes(g))];
       whole = true;
     }
+    // A ring that covers a box, half of it or more, says it already, with its number: the box is left out, and
+    // the change still counted, since it is marked. The one box of a part that differs throughout as well: then
+    // the ring says it, and the part is not said to be boxed.
+    const ringBoxes = rings.map((r) => {
+      const l = (r.x - 6) * scale, t = (r.y - 6) * scale;
+      return [l, t, l + (r.w + 12) * scale, t + (r.h + 12) * scale];
+    });
+    const covered = (bx) => ringBoxes.some((rb) => {
+      const w = Math.min(bx[2], rb[2]) - Math.max(bx[0], rb[0]), h = Math.min(bx[3], rb[3]) - Math.max(bx[1], rb[1]);
+      return w > 0 && h > 0 && w * h >= 0.5 * (bx[2] - bx[0]) * (bx[3] - bx[1]);
+    });
+    const swallowed = boxes.filter(covered).length;
+    boxes = boxes.filter((bx) => !covered(bx));
+    if (boxes.length === 0) whole = false;
+    // A box is drawn 8 pixels outside what it holds, but never off the picture: at an edge, that side is drawn
+    // just inside it.
+    const within = ([l, t, r, btm]) => [Math.max(3, l - 8), Math.max(3, t - 8), Math.min(b.width - 3, r + 8), Math.min(b.height - 3, btm + 8)];
     x.lineWidth = 6; x.strokeStyle = colour;
-    for (const [l, t, r, btm] of boxes) { x.beginPath(); x.roundRect(Math.max(3, l - 8), Math.max(3, t - 8), r - l + 16, btm - t + 16, 12); x.stroke(); }
+    for (const bx of boxes) { const [l, t, r, btm] = within(bx); x.beginPath(); x.roundRect(l, t, r - l, btm - t, 12); x.stroke(); }
     x.setLineDash([14, 8]);
     // A little above the line that follows, so the rule sits in the gap rather than on the words.
     for (const [y, from, to] of rules) { const ry = Math.max(4, y - 8); x.beginPath(); x.moveTo(from, ry); x.lineTo(Math.min(b.width - 6, to), ry); x.stroke(); }
@@ -509,8 +516,10 @@ export async function strike({ src, boxes, colour }) {
   const img = await new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.src = src; });
   const c = new OffscreenCanvas(img.width, img.height), x = c.getContext('2d');
   x.drawImage(img, 0, 0);
+  // Drawn 8 pixels outside what it holds, as on "after", and like it never off the picture.
+  const within = ([l, t, r, btm]) => [Math.max(3, l - 8), Math.max(3, t - 8), Math.min(img.width - 3, r + 8), Math.min(img.height - 3, btm + 8)];
   x.lineWidth = 6; x.strokeStyle = colour; x.setLineDash([14, 8]);
-  for (const [l, t, r, btm] of boxes) { x.beginPath(); x.roundRect(Math.max(3, l - 8), Math.max(3, t - 8), r - l + 16, btm - t + 16, 12); x.stroke(); }
+  for (const bx of boxes) { const [l, t, r, btm] = within(bx); x.beginPath(); x.roundRect(l, t, r - l, btm - t, 12); x.stroke(); }
   const blob = await c.convertToBlob({ type: 'image/png' });
   const bytes = new Uint8Array(await blob.arrayBuffer());
   let bin = '';
