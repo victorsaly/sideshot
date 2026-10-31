@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.6.0 (unreleased)
+## 0.6.0 (2026-10-31)
 
 - **A pull request that changes what people see gets its pictures without being asked for them**, in Claude Code.
   The plugin has a hook now: after the agent pushes, or opens a pull request, that changes styles, components,
@@ -9,6 +9,14 @@
   nothing. `"remind": false` in `.sideshot.json` turns it off for a project, and `SIDESHOT_REMIND=off` for every
   one. With the skill alone, the README says how to turn the same reminder on in Claude Code; for other agents, it
   gives the line to put in `AGENTS.md`.
+- **A note's selector may hold "="** (#14). `--note '.sections a[href*="skills"]=Skills joins'` split at the "="
+  inside the brackets and stopped the run; a note is split at the first "=" outside brackets and quotes now, so
+  attribute selectors work, a CSS escape (`\[` in a Tailwind class name) opens nothing, and the words may still hold
+  an "=" of their own.
+- **The SideShot tag never covers what the picture shows** (#14). It sat bottom right whatever was there, so on a
+  footer it covered "Privacy policy". It takes the first corner that is all but one colour now (bottom right, then
+  bottom left, top right, top left), never a word, a control, a small icon or a mark; when every corner holds something, the
+  after picture grows a strip of its own background at the bottom and the tag sits there.
 
 ## 0.5.7 (2026-10-31)
 
