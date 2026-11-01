@@ -216,8 +216,10 @@ if (pruning) {
 }
 const {
   pr, page, before, after, wait, jobs, click, branch, setupPath, chosen, schemes, parts, notes, accent,
-  markChanges, watermark, publish, updatePr, reuse,
+  markChanges, watermark, publish, updatePr, reuse, onlyNew,
 } = options;
+// The sides pictured: something new has only after.
+const sides = onlyNew ? [['after', after]] : [['before', before], ['after', after]];
 const out = resolve(root, options.out, pr);
 // What each run found (pairs left out as the same, or nothing to compare at all), kept beside the pictures by what
 // the run was asked, so a run for one page never stands for another's.
@@ -250,10 +252,8 @@ if (reuse) {
 // without its login; and it is said without one, or a token, since what is printed is read in logs.
 const silent = (
   await Promise.all(
-    [
-      ['--before', before],
-      ['--after', after],
-    ].map(async ([flag, base]) => {
+    sides.map(async ([when, base]) => {
+      const flag = `--${when}`;
       try {
         const answer = await fetch(bareOf(`${base}${page}`), {
           redirect: 'manual',
@@ -490,6 +490,7 @@ async function shoot({ device, scheme, when, base, part }) {
       rings: shot === null ? null : shot.rings,
       text: shot === null ? null : shot.text,
       pressed,
+      when,
       said: `${part.name} ${when} on ${label(device.name, scheme)}`,
     };
   } finally {
@@ -500,11 +501,12 @@ async function shoot({ device, scheme, when, base, part }) {
 const shots = [];
 for (const device of chosen)
   for (const scheme of schemes)
-    for (const [when, base] of [
-      ['before', before],
-      ['after', after],
-    ])
-      for (const part of parts) shots.push({ device, scheme, when, base, part });
+    for (const [when, base] of sides)
+      for (const part of parts) {
+        shots.push({ device, scheme, when, base, part });
+        // A before kept from an earlier run of this part must not pass for one of something new.
+        if (onlyNew) rmSync(join(out, pictureName(part.name, device.name, scheme, 'before')), { force: true });
+      }
 
 let taken;
 try {
@@ -530,6 +532,10 @@ for (const part of parts)
       const [b, a] = ['before', 'after'].map((when) => pictureName(part.name, device.name, scheme, when));
       const pair = `${part.name} on ${label(device.name, scheme)}`;
       pairOf.set(a, pair);
+      if (onlyNew) {
+        if (resultOf.get(a).rings === null) gone.push(pair);
+        continue;
+      }
       const was = resultOf.get(b).rings !== null;
       const is = resultOf.get(a).rings !== null;
       if (!was && !is) gone.push(pair);
@@ -543,13 +549,24 @@ for (const part of parts)
     }
 // Only this run's pictures are finished: one kept from an earlier run (another page) was finished then.
 const pngs = taken.filter((t) => t.rings !== null && existsSync(join(out, t.name))).map((t) => t.name);
-const nothing = pngs.length === 0 ? nothingOf({ same, gone, page }) : null;
+const nothing = pngs.length === 0 ? nothingOf({ same, gone, page, onlyNew }) : null;
 writeFileSync(runFile, `${JSON.stringify({ ...runs, [runKey]: { same, nothing, texts } })}\n`);
 for (const f of readdirSync(out)) if (/-overview(?:-\d+)?\.png$/.test(f)) rmSync(join(out, f));
 const missing = taken.filter((t) => t.rings === null).map((t) => t.said);
 const unpressed = taken.filter((t) => !t.pressed).map((t) => t.said);
+// An "after" picture with no before is of something new: it is shown as it is, with nothing drawn on it.
+const fresh = new Set(
+  taken
+    .filter((t) => t.when === 'after' && t.rings !== null && (onlyNew || resultOf.get(t.name.replace(/-after\.png$/, '-before.png')).rings === null))
+    .map((t) => t.name),
+);
+// Nothing of it before, found rather than said with --new, which would not have opened before at all.
+// Every part looked for before, not only those kept: one left out for being the same was there.
+const foundNew = !onlyNew && pngs.length > 0 && taken.every((t) => t.when !== 'before' || t.rings === null);
 const sayGaps = () => {
-  if (missing.length > 0) console.info(`Not on the page (new or removed): ${missing.join('; ')}`);
+  if (missing.length > 0) console.info(`Not on the page${onlyNew ? '' : ' (new or removed)'}: ${missing.join('; ')}`);
+  if (foundNew)
+    console.info('None of it is on before, so it is shown as new, with nothing drawn on it. --new does that sooner, without opening before.');
   if (unpressed.length > 0) console.info(`Could not press ${click} for: ${unpressed.join('; ')}`);
 };
 
@@ -563,9 +580,11 @@ if (nothing !== null) {
   process.exit(3);
 }
 
-let sheets, whole, loupes;
+let sheets, whole, loupes, drawn;
 try {
-  const ringsOf = new Map(taken.filter((t) => t.rings?.length > 0).map((t) => [t.name, t.rings]));
+  const ringsOf = new Map(taken.filter((t) => t.rings?.length > 0 && !fresh.has(t.name)).map((t) => [t.name, t.rings]));
+  // The notes with a ring somewhere, which are the ones the table says in words.
+  drawn = [...new Set([...ringsOf.values()].flat().map((r) => r.n))].sort((x, y) => x - y);
   // Each picture is finished in a browser canvas: what changed is marked, the notes are ringed, the tag goes in
   // the corner. A picture drawn on keeps a plain copy beside it.
   const dataOf = (name) => `data:image/png;base64,${readFileSync(join(out, name)).toString('base64')}`;
@@ -578,7 +597,7 @@ try {
       await p.close();
     }
   };
-  const marking = markChanges || ringsOf.size > 0;
+  const marking = (markChanges && pngs.some((f) => !fresh.has(f))) || ringsOf.size > 0;
   let colour = accent === 'auto' ? null : accent;
   if (colour === null)
     colour = marking
@@ -618,7 +637,7 @@ try {
   // A part boxed once for differing nearly everywhere is said, here and in the table, and kept for --reuse.
   whole = marked.filter((m) => m !== null && m.whole).map((m) => pairOf.get(m.f));
   loupes = marked.some((m) => m !== null && m.loupes > 0);
-  writeFileSync(runFile, `${JSON.stringify({ ...runs, [runKey]: { same, nothing, whole, texts, loupes } })}\n`);
+  writeFileSync(runFile, `${JSON.stringify({ ...runs, [runKey]: { same, nothing, whole, texts, loupes, drawn } })}\n`);
 
   // The overview sheets, to look over in one image or a few instead of every picture one by one.
   sheets = sheetsOf({ parts, chosen, schemes, files: new Set(pngs) });
@@ -654,11 +673,11 @@ try {
   await browser.close();
 }
 // Every picture kept for the pull request, from this run and earlier ones (another page), goes to its folder.
-if (publish) publishing(readdirSync(out).filter(isPicture), { same, nothing: null, whole, texts, loupes });
+if (publish) publishing(readdirSync(out).filter(isPicture), { same, nothing: null, whole, texts, loupes, drawn });
 
 /** The pictures pushed to their own branch, and the table made of them: printed, or put in the description. With
  * nothing to compare, nothing is pushed, and the description says so, and why. */
-function publishing(pictures, { same, nothing, whole = [], texts = {}, loupes = false }) {
+function publishing(pictures, { same, nothing, whole = [], texts = {}, loupes = false, drawn = null }) {
   if (nothing === null) {
     // A refused push is said once the checkout is gone, so none is left behind, and before any table is written.
     let refused = null;
@@ -705,8 +724,8 @@ function publishing(pictures, { same, nothing, whole = [], texts = {}, loupes = 
   const files = new Set(readdirSync(out));
   const table =
     nothing === null
-      ? tableOf({ parts, chosen, schemes, notes, files, before, after, page, slug, branch, pr, same, markChanges, whole, texts, loupes })
-      : nothingTableOf({ why: nothing, before, after, page });
+      ? tableOf({ parts, chosen, schemes, notes, files, before, after, page, slug, branch, pr, same, markChanges, whole, texts, loupes, onlyNew, drawn })
+      : nothingTableOf({ why: nothing, before, after, page, onlyNew });
   writeFileSync(join(out, 'table.md'), `${table}\n`);
 
   if (updatePr) {

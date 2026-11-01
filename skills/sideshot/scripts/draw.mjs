@@ -528,17 +528,19 @@ export async function strike({ src, boxes, colour }) {
 }
 
 /** Runs in the page: one sheet of pairs, each before beside after, small, with what it is said above it. Made to
- * be looked over in one go, by a person or an agent, before anything is published; never published itself. */
+ * be looked over in one go, by a person or an agent, before anything is published; never published itself.
+ * Something new, a row with no before, is laid across the whole sheet. */
 export async function sheet({ rows }) {
   const load = (s) => new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.src = s; });
-  const W = 1400, gap = 16, band = 30, col = (W - 3 * gap) / 2, tallest = 440;
+  const W = 1400, gap = 16, band = 30, half = (W - 3 * gap) / 2, tallest = 440;
   const laid = [];
   for (const r of rows) {
     const before = r.before ? await load(r.before) : null, after = r.after ? await load(r.after) : null;
     const shown = [before, after].filter(Boolean);
+    const alone = !before && Boolean(after), col = alone ? W - 2 * gap : half;
     // Both sides at one scale, so a part that grew looks bigger.
     const s = Math.min(1, col / Math.max(...shown.map((i) => i.width)), tallest / Math.max(...shown.map((i) => i.height)));
-    laid.push({ label: r.label, before, after, s, h: Math.max(...shown.map((i) => i.height)) * s });
+    laid.push({ label: r.label, before, after, alone, s, h: Math.max(...shown.map((i) => i.height)) * s });
   }
   const H = gap + laid.reduce((sum, r) => sum + band + r.h + gap, 0);
   const c = new OffscreenCanvas(W, Math.ceil(H)), x = c.getContext('2d');
@@ -548,10 +550,12 @@ export async function sheet({ rows }) {
     x.fillStyle = '#111111'; x.font = '600 17px system-ui, -apple-system, sans-serif'; x.textBaseline = 'middle';
     x.textAlign = 'left'; x.fillText(r.label, gap, y + band / 2);
     x.font = '15px system-ui, -apple-system, sans-serif'; x.fillStyle = '#555555';
-    x.textAlign = 'right'; x.fillText('before', gap + col, y + band / 2); x.fillText('after', W - gap, y + band / 2);
+    x.textAlign = 'right';
+    if (r.alone) x.fillText('new', W - gap, y + band / 2);
+    else { x.fillText('before', gap + half, y + band / 2); x.fillText('after', W - gap, y + band / 2); }
     x.textAlign = 'left';
-    [r.before, r.after].forEach((img, k) => {
-      const left = gap + k * (col + gap), top = y + band;
+    (r.alone ? [r.after] : [r.before, r.after]).forEach((img, k) => {
+      const left = gap + k * (half + gap), top = y + band;
       if (!img) { x.fillStyle = '#555555'; x.fillText('(not there)', left + 8, top + 20); return; }
       const w = img.width * r.s, h = img.height * r.s;
       x.drawImage(img, left, top, w, h);

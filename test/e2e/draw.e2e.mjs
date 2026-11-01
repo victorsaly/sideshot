@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import { chromium } from 'playwright';
-import { finish, pickAccent, strike } from '../../skills/sideshot/scripts/draw.mjs';
+import { finish, pickAccent, sheet, strike } from '../../skills/sideshot/scripts/draw.mjs';
 
 const marigold = '#ffc400';
 // The tag's ink, #111111 at 92%, as it shows on white.
@@ -559,6 +559,27 @@ describe('draw.mjs', () => {
     // The strip is the picture's own background; the tag's ink sits in it, below the picture that was.
     const dark = await page.evaluate(whereOf, { png, colour: tagOnWhite });
     assert.ok(dark.length > 0 && dark.every((r) => r.top >= 180), JSON.stringify(dark));
+  });
+
+  it('lays something new across the whole sheet, with no column for a before', async () => {
+    // A wide blue picture: beside a before it would be scaled into the right half of the sheet's 1400 pixels.
+    const wide = await picture({ width: 1200, height: 100, rects: [[0, 0, 1200, 100, '#3355aa']] });
+    const png = await page.evaluate(sheet, { rows: [{ label: 'new', before: null, after: wide }] });
+    const blue = await page.evaluate(whereOf, { png, colour: '#3355aa' });
+    assert.equal(blue.length, 1, JSON.stringify(blue));
+    assert.ok(blue[0].left < 40 && blue[0].right - blue[0].left > 1100, JSON.stringify(blue));
+  });
+
+  it('lays a new row across the sheet beside a row that is a pair', async () => {
+    const red = await picture({ width: 1200, height: 100, rects: [[0, 0, 1200, 100, '#aa3333']] });
+    const wide = await picture({ width: 1200, height: 100, rects: [[0, 0, 1200, 100, '#3355aa']] });
+    const png = await page.evaluate(sheet, { rows: [{ label: 'pair', before: red, after: red }, { label: 'new', before: null, after: wide }] });
+    const blue = await page.evaluate(whereOf, { png, colour: '#3355aa' });
+    assert.equal(blue.length, 1, JSON.stringify(blue));
+    assert.ok(blue[0].left < 40 && blue[0].right - blue[0].left > 1100, JSON.stringify(blue));
+    // The pair is still before beside after.
+    const pair = await page.evaluate(whereOf, { png, colour: '#aa3333' });
+    assert.ok(pair.length === 1 && pair[0].right - pair[0].left > 1100, JSON.stringify(pair));
   });
 
   it('marks in marigold, unless the page is close to it', async () => {

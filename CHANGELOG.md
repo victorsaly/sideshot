@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.0 (2026-11-01)
+
+- **A new feature is shown as what's new, not as a comparison.** A part that was not there before is found by
+  itself and shown on its own, as it is: no "(not there)" column, and no rings or boxes drawn on it. When every part
+  is new, the description is headed *What's new*, with no key to marks there are none of, and the overview sheet
+  lays each picture across its width. Among pairs that changed, a new one is labelled "new".
+- **`--new` does the same sooner.** Told it is all new, SideShot takes only the after pictures and never opens a
+  "before" site, so it needs no `--before`. `--note` and `--mark-changes` are refused with it, since there is
+  nothing to mark against. A run that finds every part new names it.
+- **The table lists only the notes it ringed.** A note on a part that is new, or on something no picture shows,
+  has no ring to point to: its words are left out, and the others keep their numbers.
+
 ## 0.6.3 (2026-10-31)
 
 - **A part that differs throughout is boxed round all of it, even under a ring.** The one box was taken over the

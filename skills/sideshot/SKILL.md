@@ -3,7 +3,7 @@ name: sideshot
 description: Before-and-after screenshots of the part of a page a pull request changes (a component, a section, a style), not the whole page, on a desk and a phone, optionally in dark mode, with what changed marked, shown to the user first, then kept on a branch of their own and put in the PR description as a table. Use when opening or updating a PR with visible UI changes, or when asked for before and after pictures, screenshots for review, to show reviewers how something looked and looks now, visual proof of a change, or to "sideshot" a PR. Load it before planning the pictures, even when asked not to run anything yet.
 license: MIT
 metadata:
-  version: 0.6.3
+  version: 0.7.0
   homepage: https://github.com/victorsaly/sideshot
 allowed-tools: Bash(node ${CLAUDE_SKILL_DIR}/scripts/*)
 ---
@@ -25,6 +25,9 @@ option, so there is no need to read the script.
   the user names them (`--devices`; desk and phone otherwise).
 - **What to say on the picture**: two or three `--note "selector=what changed"` (a numbered ring, its words under
   the table), and `--mark-changes` to box whatever else differs.
+- **A new feature**, with nothing before it to compare (a new page, section or component): a part not there
+  before is shown by itself, as it is, with nothing drawn on it, and the table says what's new. When you know it is
+  all new, `--new` does that sooner, without opening before (no `--before`, `--note` or `--mark-changes`).
 
 The pull request is found with `gh` for this branch; when there is none yet, open it first.
 

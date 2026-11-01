@@ -53,7 +53,8 @@ there: they change with every pull request. A flag given on the command line win
 - **One small SideShot tag** to a pair, in the corner of the "after" picture. `--no-watermark` leaves it off.
 - A picture drawn on keeps a plain copy beside it (`*-plain.png`); plain copies and overview sheets are never
   published.
-- Pictures are 2x. A part that is new or removed shows as "(not there)" on one side.
+- Pictures are 2x. A part that was removed shows as "(not there)" on after. A part that is new is shown alone,
+  marked "new", with no rings or boxes on it; when every part is, the table is headed "What's new".
 
 ## When a run is slow or wrong
 

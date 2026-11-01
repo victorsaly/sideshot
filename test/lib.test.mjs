@@ -152,6 +152,19 @@ describe('optionsOf', () => {
     refused(['--pr', '1', '--part', 'a=.a'], /Give the pull request/);
     refused(base.slice(0, 4), /Give the pull request/);
     refused(['--pr', '1; rm -rf /', ...base.slice(2)], /Give the pull request/);
+    refused(['--pr', '1', '--part', 'a=.a'], /or --new, for a new feature/);
+  });
+  it('takes --new without a before, for a new feature, and draws nothing on it', () => {
+    const o = optionsOf(['--pr', '1', '--part', 'a=.a', '--new'], { before: 'https://example.com', markChanges: true });
+    assert.equal(o.onlyNew, true);
+    // Nothing is opened there, so nothing is said of it either.
+    assert.equal(o.before, null);
+    assert.equal(o.markChanges, false);
+    assert.equal(asked().onlyNew, false);
+  });
+  it('refuses a note or marks with --new, which has nothing to mark them against', () => {
+    refused([...base, '--new', '--note', '.a=New'], /--new pictures what is new as it is/);
+    refused([...base, '--new', '--mark-changes'], /leave out --note and --mark-changes/);
   });
   it('takes the flag over .sideshot.json, and .sideshot.json over the default', () => {
     const config = { after: 'http://localhost:4321', wait: 200, devices: ['wide'] };
@@ -298,6 +311,7 @@ describe('runKeyOf', () => {
     assert.equal(runKeyOf(a), runKeyOf(asked('--page', '/a')));
     assert.notEqual(runKeyOf(a), runKeyOf(asked('--page', '/b')));
     assert.notEqual(runKeyOf(a), runKeyOf(asked('--page', '/a', '--schemes', 'dark')));
+    assert.notEqual(runKeyOf(a), runKeyOf(asked('--page', '/a', '--new')));
   });
 });
 
@@ -356,7 +370,7 @@ describe('usage', () => {
   it('names every flag optionsOf reads', () => {
     const read = ['--pr', '--page', '--part', '--click', '--devices', '--schemes', '--before', '--after', '--setup',
       '--note', '--mark-changes', '--accent', '--no-watermark', '--wait', '--jobs', '--out', '--publish',
-      '--update-pr', '--reuse', '--branch'];
+      '--update-pr', '--reuse', '--branch', '--new'];
     for (const flag of read) assert.ok(help.includes(`  ${flag} `), flag);
   });
 });
@@ -364,6 +378,7 @@ describe('usage', () => {
 describe('tableOf', () => {
   const o = asked('--schemes', 'light,dark', '--note', '.a=Bigger button');
   const table = (files, more = {}) => tableOf({ ...o, files: new Set(files), slug: 'o/r', branch: 'sideshot', ...more });
+  const pair = ['hero-desk-before.png', 'hero-desk-after.png'];
 
   it('has a row for each picture taken, linked on the branch', () => {
     const t = table(['hero-desk-before.png', 'hero-desk-after.png']);
@@ -383,8 +398,35 @@ describe('tableOf', () => {
     const t = table(['hero-desk-before.png', 'hero-desk-after.png'], { branch: 'pictures/sideshot' });
     assert.ok(t.includes('https://github.com/o/r/raw/refs/heads/pictures/sideshot/12/hero-desk-before.png'), t);
   });
-  it('says when one side is not there', () => {
-    assert.match(table(['hero-phone-dark-after.png']), /\| \(not there\) \| <img/);
+  it('says when what was there is gone', () => {
+    assert.match(table(['hero-phone-dark-before.png', 'hero-desk-after.png', 'hero-desk-before.png']), /\| <img[^\n]*\| \(not there\) \|/);
+  });
+  it('shows a part that is new on its own, as new, beside the pairs that changed', () => {
+    const t = table(['hero-desk-before.png', 'hero-desk-after.png', 'hero-phone-after.png']);
+    assert.match(t, /^## Before and after\n/);
+    assert.match(t, /\*\*hero, phone\*\* <sub>390×844 · new<\/sub>\n\n<img src="[^"]*\/hero-phone-after\.png" width="420">\n/);
+    assert.doesNotMatch(t, /not there/);
+    // The rings are on the pair that changed, so they are still said.
+    assert.match(t, /\*\*What changed\*\*/);
+  });
+  it('lists only the notes whose rings were drawn, by their numbers', () => {
+    const notes = asked('--note', '.a=Bigger button', '--note', '.b=New badge').notes;
+    const t = table(pair, { notes, drawn: [1] });
+    assert.match(t, /\*\*What changed\*\*\n\n1\. Bigger button\n/);
+    assert.doesNotMatch(t, /New badge/);
+    assert.doesNotMatch(table(pair, { notes, drawn: [] }), /What changed/);
+    // Kept by a run from before drawn was: every note, as then.
+    assert.match(table(pair, { notes }), /2\. New badge/);
+  });
+  it('still says before and after when a part was the same and another new', () => {
+    assert.match(table(['hero-phone-after.png'], { same: ['hero on desk'] }), /^## Before and after\n/);
+  });
+  it('says what is new, when all of it is, with no key to marks or rings there are none of', () => {
+    const t = table(['hero-desk-after.png', 'hero-phone-after.png'], { markChanges: true, whole: ['hero on desk'] });
+    assert.match(t, /^## What's new\n/);
+    assert.doesNotMatch(t, /Before \| After|not there|Boxed:|Most of the part|What changed/);
+    // Before was opened, and found without it: still named.
+    assert.ok(t.includes('Before: https://example.com/ · After: run locally'), t);
   });
   it('names the pairs left out for being the same, and only when there are any', () => {
     const t = table(['hero-desk-after.png'], { same: ['hero on phone', 'hero on phone-dark'] });
@@ -392,14 +434,14 @@ describe('tableOf', () => {
     assert.doesNotMatch(table(['hero-desk-after.png']), /The same before and after/);
   });
   it('says what the marks mean, only when changes are marked', () => {
-    const t = table(['hero-desk-after.png'], { markChanges: true });
+    const t = table(pair, { markChanges: true });
     assert.ok(t.includes('<sub>Boxed: added or changed · dashed rule: taken out · dashed box on before: where it was.</sub>'), t);
-    assert.doesNotMatch(table(['hero-desk-after.png']), /Boxed:/);
+    assert.doesNotMatch(table(pair), /Boxed:/);
   });
   it('says where most of the part differs, boxed once, as a style change', () => {
-    const t = table(['hero-desk-after.png'], { markChanges: true, whole: ['hero on desk', 'hero on phone'] });
+    const t = table(pair, { markChanges: true, whole: ['hero on desk', 'hero on phone'] });
     assert.ok(t.includes('<sub>Most of the part differs on hero on desk, hero on phone, so it is boxed once: likely a style change (colour, font, spacing).</sub>'), t);
-    assert.doesNotMatch(table(['hero-desk-after.png'], { markChanges: true }), /Most of the part/);
+    assert.doesNotMatch(table(pair, { markChanges: true }), /Most of the part/);
   });
   it('says what text changed under a pair, when it did', () => {
     const t = table(['hero-desk-before.png', 'hero-desk-after.png'], {
@@ -409,11 +451,11 @@ describe('tableOf', () => {
     assert.doesNotMatch(table(['hero-desk-before.png', 'hero-desk-after.png']), /Text:/);
   });
   it('names the inset in the key only when a picture has one', () => {
-    assert.match(table(['hero-desk-after.png'], { markChanges: true, loupes: true }), /where it was · inset: a small change at 3×\.<\/sub>/);
-    assert.doesNotMatch(table(['hero-desk-after.png'], { markChanges: true }), /inset/);
+    assert.match(table(pair, { markChanges: true, loupes: true }), /where it was · inset: a small change at 3×\.<\/sub>/);
+    assert.doesNotMatch(table(pair, { markChanges: true }), /inset/);
   });
   it('lists the notes and where before and after came from', () => {
-    const t = table(['hero-desk-after.png']);
+    const t = table(pair);
     assert.match(t, /\*\*What changed\*\*\n\n1\. Bigger button/);
     assert.ok(t.includes('Before: https://example.com/ · After: run locally'), t);
   });
@@ -425,6 +467,14 @@ describe('tableOf', () => {
     });
     assert.ok(t.includes('Before: https://preview.example.com/pricing · After: run locally'), t);
     assert.doesNotMatch(t, /someone|not-a-real/);
+  });
+  it('shows what is new on its own, with no before and nothing said of one', () => {
+    // A before of the phone, left from an earlier run, is not a pair of this one.
+    const files = new Set(['hero-desk-after.png', 'hero-phone-before.png']);
+    const t = tableOf({ ...optionsOf(['--pr', '12', '--part', 'hero=.hero', '--new']), files, slug: 'o/r', branch: 'sideshot' });
+    assert.match(t, /^## What's new\n\n\*\*hero, desk\*\* <sub>1280×900<\/sub>\n\n<img src="https:\/\/github\.com\/o\/r\/raw\/refs\/heads\/sideshot\/12\/hero-desk-after\.png" width="420">\n/);
+    assert.doesNotMatch(t, /Before|not there|phone/);
+    assert.match(t, /<sub>After: run locally · made with/);
   });
 });
 
@@ -475,6 +525,15 @@ describe('nothing to compare', () => {
   });
   it('names the page without its query', () => {
     assert.match(nothingOf({ same: [], gone: ['a on desk'], page: '/p?token=secret' }), /on \/p: /);
+  });
+  it('says, for something new, that the part is not on the page', () => {
+    assert.equal(
+      nothingOf({ same: [], gone: ['badge on desk'], page: '/', onlyNew: true }),
+      'SideShot found nothing new to picture on /: the part is not on the page on badge on desk.',
+    );
+    const text = nothingTableOf({ why: 'Nothing.', before: null, after: 'http://localhost:4321', page: '/', onlyNew: true });
+    assert.match(text, /^## What's new\n\nNothing\. /);
+    assert.match(text, /<sub>After: run locally · made with/);
   });
   it('puts that, and where each side came from, where the table would go', () => {
     const text = nothingTableOf({
@@ -594,16 +653,22 @@ describe('runsOf and runOf', () => {
     assert.deepEqual(runsOf('{"k":{"same":["a on desk"],"nothing":null}}'), { k: { same: ['a on desk'], nothing: null } });
     for (const text of ['', '{nope', 'null', '[]', '"x"', '12']) assert.deepEqual(runsOf(text), {}, text);
   });
+  it('keeps which notes were drawn, and only numbers', () => {
+    assert.deepEqual(runOf({ k: { same: [], nothing: null, drawn: [2] } }, 'k').drawn, [2]);
+    assert.equal(runOf({ k: { same: [], nothing: null } }, 'k').drawn, null);
+    assert.equal(runOf({ k: { same: [], nothing: null, drawn: ['<b>'] } }, 'k').nothing, null);
+    assert.deepEqual(runOf({ k: { same: ['x'], nothing: null, drawn: ['<b>'] } }, 'k').same, []);
+  });
   it('gives a run what it found, or nothing found when what is kept is not in that shape', () => {
     const runs = { a: { same: ['x'], nothing: null }, b: { same: [], nothing: 'Nothing to compare.' } };
-    assert.deepEqual(runOf(runs, 'a'), { same: ['x'], nothing: null, whole: [], texts: {}, loupes: false });
-    assert.deepEqual(runOf(runs, 'b'), { same: [], nothing: 'Nothing to compare.', whole: [], texts: {}, loupes: false });
-    assert.deepEqual(runOf({ c: { same: [], nothing: null, whole: ['y'] } }, 'c'), { same: [], nothing: null, whole: ['y'], texts: {}, loupes: false });
+    assert.deepEqual(runOf(runs, 'a'), { same: ['x'], nothing: null, whole: [], texts: {}, loupes: false, drawn: null });
+    assert.deepEqual(runOf(runs, 'b'), { same: [], nothing: 'Nothing to compare.', whole: [], texts: {}, loupes: false, drawn: null });
+    assert.deepEqual(runOf({ c: { same: [], nothing: null, whole: ['y'] } }, 'c'), { same: [], nothing: null, whole: ['y'], texts: {}, loupes: false, drawn: null });
     assert.deepEqual(
       runOf({ d: { same: [], nothing: null, texts: { 'a-desk-after.png': ['x **y**'] }, loupes: true } }, 'd'),
-      { same: [], nothing: null, whole: [], texts: { 'a-desk-after.png': ['x **y**'] }, loupes: true },
+      { same: [], nothing: null, whole: [], texts: { 'a-desk-after.png': ['x **y**'] }, loupes: true, drawn: null },
     );
-    const none = { same: [], nothing: null, whole: [], texts: {}, loupes: false };
+    const none = { same: [], nothing: null, whole: [], texts: {}, loupes: false, drawn: null };
     for (const kept of [undefined, null, 'x', { same: 'x' }, { same: [1] }, { same: [], nothing: 4 }, { same: [], nothing: null, whole: 'y' },
       { same: [], nothing: null, texts: ['x'] }, { same: [], nothing: null, texts: { a: 'x' } }, { same: [], nothing: null, loupes: 1 }])
       assert.deepEqual(runOf({ k: kept }, 'k'), none, JSON.stringify(kept));
