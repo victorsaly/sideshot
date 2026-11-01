@@ -3,7 +3,7 @@ name: sideshot
 description: Before-and-after screenshots of the part of a page a pull request changes (a component, a section, a style), not the whole page, on a desk and a phone, optionally in dark mode, with what changed marked, shown to the user first, then kept on a branch of their own and put in the PR description as a table. Use when opening or updating a PR with visible UI changes, or when asked for before and after pictures, screenshots for review, to show reviewers how something looked and looks now, visual proof of a change, or to "sideshot" a PR. Load it before planning the pictures, even when asked not to run anything yet.
 license: MIT
 metadata:
-  version: 0.7.1
+  version: 0.8.0
   homepage: https://github.com/victorsaly/sideshot
 allowed-tools: Bash(node ${CLAUDE_SKILL_DIR}/scripts/*)
 ---
@@ -29,7 +29,8 @@ option, so there is no need to read the script.
   before is shown by itself, as it is, with nothing drawn on it, and the table says what's new. When you know it is
   all new, `--new` does that sooner, without opening before (no `--before`, `--note` or `--mark-changes`).
 
-The pull request is found with `gh` for this branch; when there is none yet, open it first.
+The pull request is found for this branch (with `gh` on GitHub, or the sign-in on Azure DevOps); when there is
+none yet, open it first.
 
 ## 2. Where before and after run
 
@@ -58,8 +59,10 @@ says why: check that `--after` is this branch and that `--page` and `--part` sho
 does not show there, `--update-pr --reuse` says so in the PR description, and why, in place of a table.
 
 When the pictures show the change, publish those same pictures: the same command with `--update-pr --reuse`. It
-pushes them to the `sideshot` branch and puts the table in the PR description, replacing an earlier one. This
-writes to the repository: do it only for the user's own PR, and tell them, with the link.
+pushes them to the `sideshot` branch and puts the table in the PR description, replacing an earlier one. On Azure
+DevOps it uploads them to the PR and puts the table in a comment of its own instead: see
+[reference.md](reference.md). This writes to the repository: do it only for the user's own PR, and tell them, with
+the link.
 
 ## 4. Clean up old pictures
 
@@ -81,4 +84,5 @@ again then.
 - **Playwright** comes from the project, or from a global install for a project without Node. If there is none,
   the script says so: ask before adding it.
 - **Add `.sideshot/` to `.gitignore`.**
-- Running `main` locally as "before", stand-in data, devices, colours and the tag: [reference.md](reference.md).
+- Running `main` locally as "before", stand-in data, devices, colours, the tag and Azure DevOps:
+  [reference.md](reference.md).

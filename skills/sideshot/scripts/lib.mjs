@@ -101,6 +101,93 @@ export function slugOf(remote) {
   return m ? `${m[1]}/${m[2]}` : null;
 }
 
+/** The Azure DevOps repository origin is (organisation, project and repository, unescaped), from any address it is
+ * reached by: https on dev.azure.com or an organisation's older visualstudio.com, or ssh. A login in the address is
+ * left out. null when origin is not on Azure DevOps, or a name in it would leave its place in an API address. */
+export function azureOf(remote) {
+  const forms = [
+    /^https:\/\/(?:[^@/]+@)?dev\.azure\.com\/([^/]+)\/([^/]+)\/_git\/([^/?#]+?)\/?$/,
+    /^https:\/\/(?:[^@/]+@)?([A-Za-z0-9-]+)\.visualstudio\.com\/(?:DefaultCollection\/)?([^/]+)\/_git\/([^/?#]+?)\/?$/,
+    /^(?:ssh:\/\/)?git@ssh\.dev\.azure\.com(?::22)?[:/]v3\/([^/]+)\/([^/]+)\/([^/]+?)\/?$/,
+    /^(?:ssh:\/\/)?[^@/]+@vs-ssh\.visualstudio\.com(?::22)?[:/]v3\/([^/]+)\/([^/]+)\/([^/]+?)\/?$/,
+  ];
+  for (const form of forms) {
+    const m = form.exec(String(remote).trim());
+    if (!m) continue;
+    let names;
+    try {
+      names = m.slice(1, 4).map((n) => decodeURIComponent(n));
+    } catch {
+      return null;
+    }
+    if (names.some((n) => n === '' || n === '.' || n === '..' || /[/\\?#]/.test(n))) return null;
+    const [org, project, repo] = names;
+    return { org, project, repo };
+  }
+  return null;
+}
+
+/** The address of a repository's Git API on Azure DevOps, under base. */
+export const azureApiOf = ({ org, project, repo }, base) =>
+  `${base}/${[org, project].map(encodeURIComponent).join('/')}/_apis/git/repositories/${encodeURIComponent(repo)}`;
+
+/** Where Azure DevOps is asked: dev.azure.com, or, for the tests, a stand-in on this machine named in
+ * SIDESHOT_AZURE_URL. A sign-in goes with every request, so it never goes to another machine that way. */
+export function azureBaseOf(env) {
+  try {
+    const where = new URL(String(env.SIDESHOT_AZURE_URL));
+    if (['127.0.0.1', 'localhost', '[::1]'].includes(where.hostname) && where.protocol === 'http:')
+      return where.origin;
+  } catch {
+    // Not set, or not an address.
+  }
+  return 'https://dev.azure.com';
+}
+
+/** The Authorization header for Azure DevOps from the environment: a personal access token
+ * (AZURE_DEVOPS_EXT_PAT, the one the Azure CLI's devops commands read), else a pipeline's own token
+ * (SYSTEM_ACCESSTOKEN). null when neither is set; the Azure CLI's sign-in is asked then. */
+export function azureAuthOf(env) {
+  const pat = String(env.AZURE_DEVOPS_EXT_PAT ?? '').trim();
+  if (pat !== '') return `Basic ${Buffer.from(`:${pat}`).toString('base64')}`;
+  const pipeline = String(env.SYSTEM_ACCESSTOKEN ?? '').trim();
+  return pipeline === '' ? null : `Bearer ${pipeline}`;
+}
+
+/** The pull request for this branch, from what Azure DevOps lists for it as the source: the one active pull request
+ * not from a fork. None, or more than one, is null, so --pr is asked for rather than guessed. */
+export function azurePrOf(listed) {
+  const own = (Array.isArray(listed?.value) ? listed.value : []).filter(
+    (p) => p && !p.forkSource && Number.isInteger(p.pullRequestId),
+  );
+  return own.length === 1 ? String(own[0].pullRequestId) : null;
+}
+
+/** A picture's name as an attachment of its pull request: what it holds first, since a pull request takes a name
+ * once, so a picture taken again under the same name is a new attachment, and the same picture is not sent twice. */
+export const attachmentNameOf = (file, hash) => `${hash.slice(0, 12)}-${file}`;
+
+/** SideShot's own comment on an Azure DevOps pull request, from its threads: the first comment of a thread, opened
+ * between the markers, neither deleted. null when there is none yet. */
+export function ownThreadOf(threads) {
+  for (const t of Array.isArray(threads?.value) ? threads.value : []) {
+    const first = t?.comments?.[0];
+    if (!t.isDeleted && first && !first.isDeleted && String(first.content ?? '').startsWith(markers.start))
+      return { thread: t.id, comment: first.id };
+  }
+  return null;
+}
+
+// The most an Azure DevOps pull request's description holds, in UTF-16 code units, which is how JavaScript counts.
+const azureDescriptionMost = 4000;
+
+/** The description with these words between the markers, as bodyWith puts them, or null when that would not fit
+ * in what Azure DevOps takes: the description is the author's, so it is left as it is then. */
+export function describedWith(description, words) {
+  const next = bodyWith(String(description ?? ''), words);
+  return next.length <= azureDescriptionMost ? next : null;
+}
+
 /** .sideshot.json, read: an object of defaults, or a UsageError that says what is wrong with it. */
 export function configOf(text) {
   let config;
@@ -407,8 +494,10 @@ Running
   --wait ms                time a part is given to settle before it is pictured (default 1500)
   --jobs N                 pictures taken at once (default 4)
   --out folder             where the pictures go (default .sideshot), in a folder for the PR
-  --publish                push the pictures to the picture branch and print the table
-  --update-pr              also put the table in the PR description (needs gh)
+  --publish                push the pictures to the picture branch and print the table (on Azure DevOps:
+                           upload them to the PR)
+  --update-pr              also put the table in the PR description (needs gh; on Azure DevOps, in a comment,
+                           signed in with az login or AZURE_DEVOPS_EXT_PAT)
   --reuse                  with --publish or --update-pr: the pictures already taken, as they are
   --branch name            the picture branch, which never merges (default sideshot)
 
@@ -578,11 +667,12 @@ export function textDiffOf(before, after) {
   return lines;
 }
 
-export function tableOf({ parts, chosen, schemes, notes, files, before, after, page, slug, branch, pr, same = [], markChanges = false, whole = [], texts = {}, loupes = false, onlyNew = false, drawn = null }) {
+export function tableOf({ parts, chosen, schemes, notes, files, before, after, page, slug, branch, pr, same = [], markChanges = false, whole = [], texts = {}, loupes = false, onlyNew = false, drawn = null, links = null }) {
+  // Each picture where it was put: an attachment of the pull request on Azure DevOps (links), else the branch.
   // Through github.com, not raw.githubusercontent.com: that answers 404 for a private repository, even to those who
   // can read it, where github.com sends them on with their sign-in. The branch in full (refs/heads/), so one with a
   // slash in it is not taken for part of the path.
-  const url = (file) => `https://github.com/${slug}/raw/refs/heads/${branch}/${pr}/${file}`;
+  const url = (file) => links?.[file] ?? `https://github.com/${slug}/raw/refs/heads/${branch}/${pr}/${file}`;
   // The pairs shown. With --new nothing was taken before, so a before left from an earlier run is not one of them.
   const pairs = [];
   for (const part of parts)

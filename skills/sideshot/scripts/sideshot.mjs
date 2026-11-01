@@ -14,6 +14,7 @@
 // Needs Playwright: the project's own, or one installed globally for a project without Node of its own.
 /* global document, getComputedStyle, scrollX, scrollY -- only in the functions picture() hands to the page, which run there. */
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   cpSync,
   existsSync,
@@ -31,7 +32,14 @@ import { pathToFileURL } from 'node:url';
 import { finish, pickAccent, sheet, strike } from './draw.mjs';
 import {
   UsageError,
+  attachmentNameOf,
+  azureApiOf,
+  azureAuthOf,
+  azureBaseOf,
+  azureOf,
+  azurePrOf,
   bodyWith,
+  describedWith,
   configOf,
   bareOf,
   isPicture,
@@ -39,6 +47,7 @@ import {
   nothingOf,
   nothingTableOf,
   optionsOf,
+  ownThreadOf,
   pictureName,
   plainOf,
   pool,
@@ -79,17 +88,27 @@ try {
   process.exit(1);
 }
 
-/** The GitHub repository the pictures go to, or a UsageError saying why they cannot: origin is not on GitHub, or
- * git does not take the branch name. */
+let remote = '';
+try {
+  remote = git(['remote', 'get-url', 'origin'], root);
+} catch {
+  // No origin: nothing is published, and the pull request is given.
+}
+// Where the pictures go: a branch of the GitHub repository, or attachments of the pull request on Azure DevOps.
+const azure = azureOf(remote);
+const azureApi = azure && azureApiOf(azure, azureBaseOf(process.env));
+// Azure DevOps' own application, which the Azure CLI issues a sign-in for.
+const azureDevOps = '499b84ac-1321-427f-aa17-267ca6975798';
+// An answer from Azure DevOps slower than this is not coming: an upload of a picture takes a second or two.
+const azureWait = 30_000;
+
+/** The GitHub repository the pictures go to (null on Azure DevOps, which keeps them with the pull request), or a
+ * UsageError saying why they cannot go anywhere: origin is on neither, or git does not take the branch name. */
 function publishingTo(branch) {
-  let remote = '';
-  try {
-    remote = git(['remote', 'get-url', 'origin'], root);
-  } catch {
-    // Said below.
-  }
+  if (azure) return null;
   const slug = slugOf(remote);
-  if (slug === null) throw new UsageError('SideShot publishes only to an origin on GitHub, where the pictures are kept.');
+  if (slug === null)
+    throw new UsageError('SideShot publishes only to an origin on GitHub or Azure DevOps, where the pictures are kept.');
   try {
     git(['check-ref-format', '--branch', branch], root);
   } catch {
@@ -144,17 +163,57 @@ let options;
 let pruning = null;
 // The GitHub repository is origin's, and every gh call names it: gh alone may pick another (GH_REPO, its default),
 // and a pull request there of the same number would be the one read and written.
-let slug = null;
-try {
-  slug = slugOf(git(['remote', 'get-url', 'origin'], root));
-} catch {
-  // No origin: nothing is published, and the pull request is given.
+let slug = slugOf(remote);
+
+/** The sign-in to Azure DevOps, worked out once: a token in the environment, else the Azure CLI's (az login), else
+ * null. */
+let azureAuth;
+function azureSignIn() {
+  if (azureAuth !== undefined) return azureAuth;
+  azureAuth = azureAuthOf(process.env);
+  if (azureAuth === null) {
+    try {
+      const token = execFileSync(
+        'az',
+        ['account', 'get-access-token', '--resource', azureDevOps, '--query', 'accessToken', '-o', 'tsv'],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], shell: process.platform === 'win32' },
+      ).trim();
+      if (token !== '') azureAuth = `Bearer ${token}`;
+    } catch {
+      // No Azure CLI, or not signed in: said where a sign-in is needed.
+    }
+  }
+  return azureAuth;
 }
+
+/** What Azure DevOps refused, said in a sentence without a stack. */
+class AzureRefusal extends Error {}
+
+/** One request to the repository's Git API on Azure DevOps, signed in: its answer as JSON, or an AzureRefusal that
+ * says what it answered. */
+async function azureCall(method, path, body, type = 'application/json') {
+  const answer = await fetch(`${azureApi}${path}${path.includes('?') ? '&' : '?'}api-version=7.1`, {
+    method,
+    headers: { authorization: azureSignIn(), accept: 'application/json', ...(body === undefined ? {} : { 'content-type': type }) },
+    body: body === undefined || type !== 'application/json' ? body : JSON.stringify(body),
+    signal: AbortSignal.timeout(azureWait),
+  });
+  if (!answer.ok) {
+    await answer.body?.cancel();
+    throw new AzureRefusal(`Azure DevOps answered ${String(answer.status)} to ${method} ${path.split('?')[0]}`);
+  }
+  return answer.json();
+}
+
 try {
   const configFile = join(root, '.sideshot.json');
   const config = existsSync(configFile) ? configOf(readFileSync(configFile, 'utf8')) : {};
   if (args.includes('--prune')) {
     pruning = pruneOptionsOf(args, config);
+    if (azure) {
+      console.info('Nothing to prune on Azure DevOps: the pictures are attachments of their pull request, and go with it.');
+      process.exit(0);
+    }
     slug = publishingTo(pruning.branch);
   } else {
     // The pull request, when it is not given, is the one gh finds for this branch: one step fewer every run. Only
@@ -179,6 +238,20 @@ try {
         // No gh, no pull request yet, or more than one: optionsOf asks for one.
       }
     }
+    // On Azure DevOps, the one Azure DevOps lists from this branch, when there is a sign-in to ask it with.
+    if (!args.includes('--pr') && config.pr === undefined && azure && azureSignIn() !== null) {
+      try {
+        const head = git(['rev-parse', '--abbrev-ref', 'HEAD'], root);
+        const from = encodeURIComponent(`refs/heads/${head}`);
+        const found = azurePrOf(await azureCall('GET', `/pullrequests?searchCriteria.sourceRefName=${from}&searchCriteria.status=active`));
+        if (found !== null) {
+          args.push('--pr', found);
+          console.info(`For #${found}, this branch's pull request.`);
+        }
+      } catch {
+        // Not reached, or not allowed: optionsOf asks for the pull request, and publishing says what is wrong.
+      }
+    }
     options = optionsOf(args, config);
     if (options.publish) slug = publishingTo(options.branch);
   }
@@ -189,7 +262,14 @@ try {
 }
 // gh, there and signed in, before anything that needs it (the description, or the pull requests to prune): said
 // now, plainly, not as gh's own error halfway through, with the pictures pushed and no table.
-if (pruning || options.updatePr) {
+if (!pruning && options.publish && azure && azureSignIn() === null) {
+  console.error(
+    `${options.updatePr ? '--update-pr' : '--publish'} needs a sign-in to Azure DevOps: az login (the Azure CLI), ` +
+      'or a personal access token with Code (read and write) in AZURE_DEVOPS_EXT_PAT.',
+  );
+  process.exit(2);
+}
+if ((pruning || options.updatePr) && !azure) {
   const forWhat = pruning ? '--prune' : '--update-pr';
   try {
     execFileSync('gh', ['auth', 'status', '--hostname', 'github.com'], { stdio: 'ignore' });
@@ -243,7 +323,7 @@ if (reuse) {
   }
   if (found.nothing === null)
     console.info(`Publishing the ${String(kept.length)} pictures already in ${out}, as they are.`);
-  publishing(kept, found);
+  await publishing(kept, found);
   process.exit(0);
 }
 
@@ -571,12 +651,12 @@ const sayGaps = () => {
 };
 
 // Nothing to compare: it stops here, with nothing drawn and no pictures pushed. Asked to publish, it says so in
-// the description, and why, in place of a table.
+// the description (on Azure DevOps, in its comment), and why, in place of a table.
 if (nothing !== null) {
   await browser.close();
   console.info(`${nothing} Check that --after runs this branch, and that --page and --part show the change.`);
   sayGaps();
-  if (publish) publishing([], { same, nothing });
+  if (publish) await publishing([], { same, nothing });
   process.exit(3);
 }
 
@@ -673,11 +753,72 @@ try {
   await browser.close();
 }
 // Every picture kept for the pull request, from this run and earlier ones (another page), goes to its folder.
-if (publish) publishing(readdirSync(out).filter(isPicture), { same, nothing: null, whole, texts, loupes, drawn });
+if (publish) await publishing(readdirSync(out).filter(isPicture), { same, nothing: null, whole, texts, loupes, drawn });
+
+/** The pictures published where origin keeps them, and the table made of them: on GitHub, a branch and the
+ * description; on Azure DevOps, attachments and a comment. A refusal from Azure DevOps is said in a sentence, with
+ * what to do. */
+async function publishing(pictures, found) {
+  if (!azure) return publishingOnGitHub(pictures, found);
+  try {
+    await publishingOnAzure(pictures, found);
+  } catch (error) {
+    const why = error instanceof AzureRefusal ? error.message : `SideShot could not reach Azure DevOps (${String(error.cause?.code ?? error.message)})`;
+    console.error(
+      `${why}.\nCheck that the sign-in can reach this repository with Code (read and write), then run again with ` +
+        `--reuse. The pictures are still in ${out}.`,
+    );
+    process.exit(1);
+  }
+}
+
+/** On Azure DevOps, the pictures uploaded as attachments of the pull request, each named for what it holds so the
+ * same picture is not sent twice, and the table put in a comment of SideShot's own: a description holds 4000
+ * characters, which a table of a few pictures fills. The comment is replaced on every run, and closed, so a policy
+ * that wants every comment resolved does not hold the merge on it; the description says where it is, when that
+ * fits. With nothing to compare, nothing is uploaded, and the comment says why. */
+async function publishingOnAzure(pictures, { same, nothing, whole = [], texts = {}, loupes = false, drawn = null }) {
+  const at = `/pullRequests/${pr}`;
+  let table;
+  if (nothing === null) {
+    const listed = await azureCall('GET', `${at}/attachments`);
+    const kept = new Map((Array.isArray(listed.value) ? listed.value : []).map((a) => [a.displayName, a.url]));
+    const links = {};
+    for (const f of pictures) {
+      const bytes = readFileSync(join(out, f));
+      const name = attachmentNameOf(f, createHash('sha1').update(bytes).digest('hex'));
+      links[f] = kept.get(name) ?? (await azureCall('POST', `${at}/attachments/${encodeURIComponent(name)}`, bytes, 'application/octet-stream')).url;
+    }
+    table = tableOf({ parts, chosen, schemes, notes, files: new Set(readdirSync(out)), before, after, page, slug, branch, pr, same, markChanges, whole, texts, loupes, onlyNew, drawn, links });
+  } else {
+    table = nothingTableOf({ why: nothing, before, after, page, onlyNew });
+  }
+  writeFileSync(join(out, 'table.md'), `${table}\n`);
+  if (!updatePr) {
+    console.info(
+      nothing === null
+        ? `Uploaded the pictures to #${pr}. The table, also in ${join(out, 'table.md')}:\n\n${table}\n`
+        : `What the comment would say, also in ${join(out, 'table.md')}:\n\n${table}\n`,
+    );
+    return;
+  }
+  const content = bodyWith('', table).trimEnd();
+  const own = ownThreadOf(await azureCall('GET', `${at}/threads`));
+  if (own) await azureCall('PATCH', `${at}/threads/${String(own.thread)}/comments/${String(own.comment)}`, { content });
+  else await azureCall('POST', `${at}/threads`, { comments: [{ parentCommentId: 0, content, commentType: 1 }], status: 4 });
+  const { description } = await azureCall('GET', `/pullrequests/${pr}`);
+  const next = describedWith(description, "Pictures of this change: in SideShot's comment on this pull request.");
+  if (next !== null && next !== description) await azureCall('PATCH', `/pullrequests/${pr}`, { description: next });
+  console.info(
+    nothing === null
+      ? `Uploaded the pictures to #${pr} and put the table in a comment on it.`
+      : `Said in a comment on #${pr} that there was nothing to compare, and why.`,
+  );
+}
 
 /** The pictures pushed to their own branch, and the table made of them: printed, or put in the description. With
  * nothing to compare, nothing is pushed, and the description says so, and why. */
-function publishing(pictures, { same, nothing, whole = [], texts = {}, loupes = false, drawn = null }) {
+function publishingOnGitHub(pictures, { same, nothing, whole = [], texts = {}, loupes = false, drawn = null }) {
   if (nothing === null) {
     // A refused push is said once the checkout is gone, so none is left behind, and before any table is written.
     let refused = null;

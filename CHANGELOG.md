@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.0 (unreleased)
+
+- **SideShot publishes to Azure DevOps.** When origin is on Azure DevOps (dev.azure.com, an older
+  visualstudio.com, over https or ssh), `--publish` uploads the pictures as attachments of the pull request, each
+  named for what it holds so the same picture is not sent twice, and `--update-pr` puts the table in a comment of
+  SideShot's own. The comment is replaced on every run, and posted as closed, so a policy that wants every comment
+  resolved does not hold the merge on it; a description there holds only 4000 characters, so it gets one line
+  saying where the pictures are, when that fits. The pull request is found for the branch, as on GitHub.
+- **It signs in as you do:** `az login`, a personal access token in `AZURE_DEVOPS_EXT_PAT`, or a pipeline's
+  `SYSTEM_ACCESSTOKEN`. Without one it stops before taking anything, and says how. What Azure DevOps refuses is
+  said in a sentence, with what to do.
+- **`--prune` has nothing to do on Azure DevOps**, where the pictures go with their pull request, and says so.
+
 ## 0.7.1 (2026-11-01)
 
 - **A ring's number is never cut off at the picture's edge.** A part at the very top or left of the page (a site

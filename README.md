@@ -28,7 +28,7 @@ branch.</p>
 
 <p align="center">
   <a href="https://skills.sh"><img src="https://img.shields.io/badge/Agent_Skill-Claude_Code_%C2%B7_Codex_%C2%B7_Cursor_%C2%B7_OpenCode-000000?style=flat-square" alt="An Agent Skill, for Claude Code, Codex, Cursor and OpenCode" /></a>
-  <img src="https://img.shields.io/badge/version-0.7.1-000000?style=flat-square" alt="Version 0.7.1" />
+  <img src="https://img.shields.io/badge/version-0.8.0-000000?style=flat-square" alt="Version 0.8.0" />
   <a href="https://github.com/victorsaly/sideshot/actions/workflows/check.yml"><img src="https://img.shields.io/github/actions/workflow/status/victorsaly/sideshot/check.yml?branch=main&style=flat-square&label=check&color=000000" alt="Checks on main" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-000000?style=flat-square" alt="MIT licence" /></a>
 </p>
@@ -38,8 +38,9 @@ branch.</p>
 ## Install, then ask
 
 **What it needs:** Node 22 or later and git; Playwright with its Chromium, in the project or installed globally (your
-agent asks before adding it); and, to put the pictures in a pull request, the GitHub CLI (`gh`), signed in. It works
-on any site you can open in a browser, whatever it is built with.
+agent asks before adding it); and, to put the pictures in a pull request, the GitHub CLI (`gh`), signed in, or on
+Azure DevOps, the Azure CLI signed in (`az login`) or a personal access token. It works on any site you can open in a
+browser, whatever it is built with.
 
 One skill, any coding agent that reads [Agent Skills](https://skills.sh):
 
@@ -144,6 +145,9 @@ Add `--note` and `--mark-changes` and the picture says what changed: a numbered 
 - **With `--publish`**, after you have looked: one commit of those pictures to the `sideshot` branch on `origin`
   (the picture branch; `--branch` names another). It never merges, so your code stays as it was.
 - **With `--update-pr`**: the table, between markers in the pull request's description. Running again replaces it.
+- **On Azure DevOps** instead: the pictures as attachments of the pull request, and the table in a comment of
+  SideShot's own, posted as closed and replaced on every run, since a description there holds only 4000 characters.
+  The description gets one line saying where the pictures are, when that fits.
 
 Anyone who can read the repository can see the pictures, so **on a public repository they are public**; on a private
 one, only those who can read it see them, in the table as well. They stay on the `sideshot` branch until `--prune`
@@ -182,7 +186,7 @@ node skills/sideshot/scripts/sideshot.mjs --pr 123 --page /pricing --part plans=
 
 | Option | Unless said | What it does |
 |---|---|---|
-| `--pr 123` | this branch's | The pull request the pictures belong to, found with the GitHub CLI when left out. |
+| `--pr 123` | this branch's | The pull request the pictures belong to, found with the GitHub CLI (or the Azure DevOps sign-in) when left out. |
 | `--page /path` | `/` | The page to open on both sides. |
 | `--part name=selector` | *needed* | A part to picture; repeat for more. `--part page=body` for the whole page. |
 | `--before URL` | *needed*, unless `--new` | Where the site runs as it is: production, a preview, or `main` run locally. Can live in `.sideshot.json`. |
@@ -200,7 +204,7 @@ node skills/sideshot/scripts/sideshot.mjs --pr 123 --page /pricing --part plans=
 | `--jobs N` | `4` | How many pictures are taken at once. |
 | `--out folder` | `.sideshot` | Where the pictures go, in a folder for the pull request. |
 | `--publish` | | Pushes the pictures to the picture branch and prints the table. |
-| `--update-pr` | | Also writes the table into the PR description (needs the GitHub CLI). |
+| `--update-pr` | | Also writes the table into the PR description (needs the GitHub CLI). On Azure DevOps: into a comment of its own, signed in with `az login` or `AZURE_DEVOPS_EXT_PAT`. |
 | `--reuse` | | With `--publish` or `--update-pr`: publishes the pictures already taken, as they are. |
 | `--branch name` | `sideshot` | The picture branch, which never merges. |
 | `--prune` | | Takes off the picture branch the pictures of pull requests closed or merged a while ago, so the repository does not grow for ever. The branch becomes one commit of what is left, and those pull requests no longer show their pictures. Needs the GitHub CLI, not a browser. |
@@ -238,7 +242,9 @@ and 3 when there is nothing to compare. When you are running the script yourself
 | *The same before and after* (exit 3) | Check that `--after` runs this branch, and that `--page` and `--part` show the change. If it truly does not show there, `--update-pr --reuse` says so in the PR. |
 | A picture of a page still drawing | Give it longer: `--wait 3000`. |
 | It asks for `--pr` | No pull request for this branch yet, or more than one: open it, or name it with `--pr`. |
-| *SideShot publishes only to an origin on GitHub* | `--publish` and `--update-pr` need the repository on GitHub; the pictures are still in `.sideshot/` without them. |
+| *SideShot publishes only to an origin on GitHub or Azure DevOps* | `--publish` and `--update-pr` need the repository on one of them; the pictures are still in `.sideshot/` without them. |
+| *--update-pr needs a sign-in to Azure DevOps* (exit 2) | `az login` with the Azure CLI, or a personal access token with Code (read and write) in `AZURE_DEVOPS_EXT_PAT`. |
+| *Azure DevOps answered 401* (or 403, 404) | The sign-in cannot reach this repository's pull requests: check the token's organisation and its Code (read and write) scope, then run again with `--reuse`. |
 | *There are no pictures in … to publish* | `--reuse` publishes pictures already taken, and there are none: run without `--reuse` first. |
 | *--update-pr needs the GitHub CLI* (exit 2), or *--prune needs* it | Install it from [cli.github.com](https://cli.github.com), or sign in: `gh auth login`, then `gh auth status` to check. Said before anything is pictured or pushed. |
 | *git could not push the pictures to sideshot on origin* | What git said follows. Check that you can push to the repository, then run again with `--reuse`: the pictures are still in `.sideshot/`. |
