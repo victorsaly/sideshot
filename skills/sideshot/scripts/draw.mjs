@@ -410,14 +410,23 @@ export async function finish({ src, before, rings, colour, scale, tag }) {
     .reduce((sum, v, k) => sum + v * [0.2126, 0.7152, 0.0722][k], 0);
   const onColour = (lum + 0.05) / 0.05 >= 1.05 / (lum + 0.05) ? '#000000' : '#ffffff';
   const s = scale;
+  // The picture's size in CSS pixels, which the rings are measured in.
+  const W = c.width / s, H = c.height / s;
+  // A ring is 6 pixels out from what it rings, its ink 4 either side of that line, and its number a disc of
+  // radius 15 with a 1 pixel edge at its top left corner. What sits at the page's top or left (a header) has
+  // nothing above it to picture, so ring and number are kept inside the picture, moved in only as far as that.
+  const inkHalf = 4, disc = 16;
+  const within = (v, lo, hi) => Math.min(Math.max(v, lo), Math.max(lo, hi));
   for (const r of rings) {
     // An ink edge on both sides of the colour, so the ring shows on a light page and a dark one.
-    const left = (r.x - 8 + 2) * s, top = (r.y - 8 + 2) * s, w = (r.w + 12) * s, h = (r.h + 12) * s;
+    const l = within(r.x - 6, inkHalf, W - inkHalf), t = within(r.y - 6, inkHalf, H - inkHalf);
+    const right = within(r.x + r.w + 6, l, W - inkHalf), bottom = within(r.y + r.h + 6, t, H - inkHalf);
+    const left = l * s, top = t * s, w = (right - l) * s, h = (bottom - t) * s;
     x.lineWidth = 8 * s; x.strokeStyle = '#000000';
     x.beginPath(); x.roundRect(left, top, w, h, 14 * s); x.stroke();
     x.lineWidth = 4 * s; x.strokeStyle = colour;
     x.beginPath(); x.roundRect(left, top, w, h, 14 * s); x.stroke();
-    const cx = (r.x - 8 + 1) * s, cy = (r.y - 8 + 1) * s;
+    const cx = within(r.x - 7, disc, W - disc) * s, cy = within(r.y - 7, disc, H - disc) * s;
     x.beginPath(); x.arc(cx, cy, 15 * s, 0, Math.PI * 2);
     x.fillStyle = colour; x.fill();
     x.lineWidth = 2 * s; x.strokeStyle = '#000000'; x.stroke();

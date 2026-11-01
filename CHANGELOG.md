@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.1 (2026-11-01)
+
+- **A ring's number is never cut off at the picture's edge.** A part at the very top or left of the page (a site
+  header) has nothing above it to picture, so the number, drawn just outside the ring's top left corner, and the
+  ring's top side fell outside the picture. Both are kept inside now, moved in only as far as that: the number sits
+  in the ring's corner, whole. A ring reaching the right or the foot of the picture keeps those sides too.
+
 ## 0.7.0 (2026-11-01)
 
 - **A new feature is shown as what's new, not as a comparison.** A part that was not there before is found by

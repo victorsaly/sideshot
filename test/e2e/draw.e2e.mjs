@@ -521,6 +521,27 @@ describe('draw.mjs', () => {
     assert.ok(runs[0].left < 40 && runs[0].right > 200 && runs[0].top < 90 && runs[0].bottom > 110, JSON.stringify(runs));
   });
 
+  // A header at the top of the page has no room above it in the picture: the page ends there.
+  it('keeps the ring and its number inside the picture when what it rings is at the top left', async () => {
+    const at = { rings: [{ n: 1, x: 0, y: 0, w: 160, h: 20 }], colour: '#ff2e88' };
+    // The number's disc, whole and clear of the edge: its colour 28 pixels tall inside its ink edge, seen beside the
+    // ring's left side.
+    const { runs: disc } = await marked(null, card(true), { ...at, window: [8, 0, 40, 40] });
+    assert.ok(disc.length === 1 && disc[0].top > 0 && disc[0].bottom - disc[0].top >= 27, JSON.stringify(disc));
+    // The ring's top side, beyond the disc.
+    const { runs: top } = await marked(null, card(true), { ...at, window: [60, 0, 160, 12] });
+    assert.equal(top.length, 1, JSON.stringify(top));
+  });
+
+  it('keeps the ring inside the picture when what it rings reaches the bottom right', async () => {
+    const { runs } = await marked(null, card(true), {
+      rings: [{ n: 1, x: 300, y: 150, w: 100, h: 30 }], colour: '#ff2e88', window: [340, 170, 400, 180],
+    });
+    // The ring's foot and right side show, where they would have been drawn past the edge.
+    assert.equal(runs.length, 1, JSON.stringify(runs));
+    assert.ok(runs[0].right >= 392, JSON.stringify(runs));
+  });
+
   it('puts the tag in the bottom right corner, and nowhere else', async () => {
     const { png, runs } = await marked(null, card(true), { tag: true, scale: 2 });
     assert.equal(runs.length, 1, JSON.stringify(runs));
