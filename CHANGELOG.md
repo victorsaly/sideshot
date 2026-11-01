@@ -9,6 +9,8 @@
 - **`--new` does the same sooner.** Told it is all new, SideShot takes only the after pictures and never opens a
   "before" site, so it needs no `--before`. `--note` and `--mark-changes` are refused with it, since there is
   nothing to mark against. A run that finds every part new names it.
+- **The table lists only the notes it ringed.** A note on a part that is new, or on something no picture shows,
+  has no ring to point to: its words are left out, and the others keep their numbers.
 
 ## 0.6.3 (2026-10-31)
 

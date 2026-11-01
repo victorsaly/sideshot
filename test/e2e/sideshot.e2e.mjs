@@ -171,6 +171,13 @@ describe('sideshot.mjs', { concurrency: true }, () => {
     assert.deepEqual(readdirSync(join(out, '8')).sort(), ['badge-desk-after.png', 'badge-overview.png', 'run.json']);
   });
 
+  it('names --new only when no part was there before, not when one was the same', async () => {
+    const result = await shoot('21', '--part', 'title=h2', '--part', 'badge=.new', '--devices', 'desk', '--wait', '0');
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /The same before and after, so not kept: title on desk\./);
+    assert.doesNotMatch(result.stdout, /None of it is on before/);
+  });
+
   it('pictures only after for something new, with no before and nothing drawn on it', async () => {
     const result = await run(['--pr', '19', '--after', addressOf(now), '--out', out, '--new',
       '--part', 'badge=.new', '--devices', 'desk,phone', '--wait', '0']);

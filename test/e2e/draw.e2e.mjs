@@ -570,6 +570,18 @@ describe('draw.mjs', () => {
     assert.ok(blue[0].left < 40 && blue[0].right - blue[0].left > 1100, JSON.stringify(blue));
   });
 
+  it('lays a new row across the sheet beside a row that is a pair', async () => {
+    const red = await picture({ width: 1200, height: 100, rects: [[0, 0, 1200, 100, '#aa3333']] });
+    const wide = await picture({ width: 1200, height: 100, rects: [[0, 0, 1200, 100, '#3355aa']] });
+    const png = await page.evaluate(sheet, { rows: [{ label: 'pair', before: red, after: red }, { label: 'new', before: null, after: wide }] });
+    const blue = await page.evaluate(whereOf, { png, colour: '#3355aa' });
+    assert.equal(blue.length, 1, JSON.stringify(blue));
+    assert.ok(blue[0].left < 40 && blue[0].right - blue[0].left > 1100, JSON.stringify(blue));
+    // The pair is still before beside after.
+    const pair = await page.evaluate(whereOf, { png, colour: '#aa3333' });
+    assert.ok(pair.length === 1 && pair[0].right - pair[0].left > 1100, JSON.stringify(pair));
+  });
+
   it('marks in marigold, unless the page is close to it', async () => {
     const choices = ['#ffc400', '#ff2e88', '#00b4ff'];
     const grey = await picture({ width: 100, height: 100, rects: [[0, 0, 100, 100, '#808080']] });

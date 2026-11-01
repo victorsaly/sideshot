@@ -335,6 +335,24 @@ esac
     assert.match(readFileSync(body, 'utf8'), /## What's new\n/);
   });
 
+  it('lists no note whose ring is only on a part that is new', async () => {
+    const old = await serve('<!doctype html><h1>Plans</h1>');
+    // The aside well below the title, out of the room a ring is given round it.
+    const fresh = await serve('<!doctype html><h1>Our plans</h1><aside class="x" style="margin-top: 200px">Brand new</aside>');
+    try {
+      writeFileSync(body, 'Adds an aside.\n');
+      const result = await run(['--pr', '14', '--before', addressOf(old), '--after', addressOf(fresh), '--devices', 'desk',
+        '--wait', '0', '--part', 'title=h1', '--part', 'aside=.x', '--note', '.x=The aside', '--update-pr'], { cwd: project, env });
+      assert.equal(result.status, 0, result.stderr);
+      const text = readFileSync(body, 'utf8');
+      assert.match(text, /\*\*aside, desk\*\* <sub>1280×900 · new<\/sub>/);
+      assert.doesNotMatch(text, /What changed|The aside/);
+    } finally {
+      old.close();
+      fresh.close();
+    }
+  });
+
   it("says what's new by itself when no part was there before", async () => {
     writeFileSync(body, 'Adds a badge.\n');
     const result = await publish(['--part', 'badge=.new', '--update-pr'], { pr: '13' });

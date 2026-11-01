@@ -474,10 +474,12 @@ export function runOf(runs, key) {
     (kept.texts === undefined ||
       (typeof kept.texts === 'object' && kept.texts !== null && !Array.isArray(kept.texts) &&
         Object.values(kept.texts).every((v) => Array.isArray(v) && v.every((s) => typeof s === 'string')))) &&
-    (kept.loupes === undefined || typeof kept.loupes === 'boolean');
+    (kept.loupes === undefined || typeof kept.loupes === 'boolean') &&
+    (kept.drawn === undefined || (Array.isArray(kept.drawn) && kept.drawn.every((n) => Number.isInteger(n))));
+  // drawn is null for a run kept before it was: every note was listed then.
   return shaped
-    ? { same: kept.same, nothing: kept.nothing, whole: kept.whole ?? [], texts: kept.texts ?? {}, loupes: kept.loupes ?? false }
-    : { same: [], nothing: null, whole: [], texts: {}, loupes: false };
+    ? { same: kept.same, nothing: kept.nothing, whole: kept.whole ?? [], texts: kept.texts ?? {}, loupes: kept.loupes ?? false, drawn: kept.drawn ?? null }
+    : { same: [], nothing: null, whole: [], texts: {}, loupes: false, drawn: null };
 }
 
 /** What a run is known by, beside its pictures: its page, parts, devices and schemes. Two runs for one pull request
@@ -576,7 +578,7 @@ export function textDiffOf(before, after) {
   return lines;
 }
 
-export function tableOf({ parts, chosen, schemes, notes, files, before, after, page, slug, branch, pr, same = [], markChanges = false, whole = [], texts = {}, loupes = false, onlyNew = false }) {
+export function tableOf({ parts, chosen, schemes, notes, files, before, after, page, slug, branch, pr, same = [], markChanges = false, whole = [], texts = {}, loupes = false, onlyNew = false, drawn = null }) {
   // Through github.com, not raw.githubusercontent.com: that answers 404 for a private repository, even to those who
   // can read it, where github.com sends them on with their sign-in. The branch in full (refs/heads/), so one with a
   // slash in it is not taken for part of the path.
@@ -592,8 +594,8 @@ export function tableOf({ parts, chosen, schemes, notes, files, before, after, p
         if (was || files.has(a)) pairs.push({ part, device, scheme, b, a, was });
       }
   // Something new, said with --new or found with no before at all: shown as it is, with nothing drawn on it, so
-  // there are no marks or rings to explain.
-  const allNew = pairs.length > 0 && pairs.every((p) => !p.was);
+  // there are no marks or rings to explain. A part left out for being the same was compared, and is said under it.
+  const allNew = pairs.length > 0 && pairs.every((p) => !p.was) && same.length === 0;
   const lines = [headingOf(allNew), ''];
   const cell = (f) => (files.has(f) ? `<img src="${url(f)}" width="420">` : '(not there)');
   for (const { part, device, scheme, b, a, was } of pairs) {
@@ -624,9 +626,11 @@ export function tableOf({ parts, chosen, schemes, notes, files, before, after, p
       `<sub>Most of the part differs on ${whole.join(', ')}, so it is boxed once: likely a style change (colour, font, spacing).</sub>`,
       '',
     );
-  // The numbered rings on the "after" pictures, said in words.
-  if (notes.length > 0 && !allNew)
-    lines.push('**What changed**', '', ...notes.map((note) => `${String(note.n)}. ${note.text}`), '');
+  // The numbered rings on the "after" pictures, said in words: only those drawn, under the numbers they carry. A
+  // note on something new, or on nothing pictured, has no ring to point to.
+  const said = drawn === null ? notes : notes.filter((note) => drawn.includes(note.n));
+  if (said.length > 0 && !allNew)
+    lines.push('**What changed**', '', ...said.map((note) => `${String(note.n)}. ${note.text}`), '');
   lines.push(sourcesOf(before, after, page));
   return lines.join('\n');
 }

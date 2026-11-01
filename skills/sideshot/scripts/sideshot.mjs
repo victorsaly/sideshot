@@ -561,7 +561,8 @@ const fresh = new Set(
     .map((t) => t.name),
 );
 // Nothing of it before, found rather than said with --new, which would not have opened before at all.
-const foundNew = !onlyNew && pngs.length > 0 && pngs.every((f) => fresh.has(f));
+// Every part looked for before, not only those kept: one left out for being the same was there.
+const foundNew = !onlyNew && pngs.length > 0 && taken.every((t) => t.when !== 'before' || t.rings === null);
 const sayGaps = () => {
   if (missing.length > 0) console.info(`Not on the page${onlyNew ? '' : ' (new or removed)'}: ${missing.join('; ')}`);
   if (foundNew)
@@ -579,9 +580,11 @@ if (nothing !== null) {
   process.exit(3);
 }
 
-let sheets, whole, loupes;
+let sheets, whole, loupes, drawn;
 try {
   const ringsOf = new Map(taken.filter((t) => t.rings?.length > 0 && !fresh.has(t.name)).map((t) => [t.name, t.rings]));
+  // The notes with a ring somewhere, which are the ones the table says in words.
+  drawn = [...new Set([...ringsOf.values()].flat().map((r) => r.n))].sort((x, y) => x - y);
   // Each picture is finished in a browser canvas: what changed is marked, the notes are ringed, the tag goes in
   // the corner. A picture drawn on keeps a plain copy beside it.
   const dataOf = (name) => `data:image/png;base64,${readFileSync(join(out, name)).toString('base64')}`;
@@ -634,7 +637,7 @@ try {
   // A part boxed once for differing nearly everywhere is said, here and in the table, and kept for --reuse.
   whole = marked.filter((m) => m !== null && m.whole).map((m) => pairOf.get(m.f));
   loupes = marked.some((m) => m !== null && m.loupes > 0);
-  writeFileSync(runFile, `${JSON.stringify({ ...runs, [runKey]: { same, nothing, whole, texts, loupes } })}\n`);
+  writeFileSync(runFile, `${JSON.stringify({ ...runs, [runKey]: { same, nothing, whole, texts, loupes, drawn } })}\n`);
 
   // The overview sheets, to look over in one image or a few instead of every picture one by one.
   sheets = sheetsOf({ parts, chosen, schemes, files: new Set(pngs) });
@@ -670,11 +673,11 @@ try {
   await browser.close();
 }
 // Every picture kept for the pull request, from this run and earlier ones (another page), goes to its folder.
-if (publish) publishing(readdirSync(out).filter(isPicture), { same, nothing: null, whole, texts, loupes });
+if (publish) publishing(readdirSync(out).filter(isPicture), { same, nothing: null, whole, texts, loupes, drawn });
 
 /** The pictures pushed to their own branch, and the table made of them: printed, or put in the description. With
  * nothing to compare, nothing is pushed, and the description says so, and why. */
-function publishing(pictures, { same, nothing, whole = [], texts = {}, loupes = false }) {
+function publishing(pictures, { same, nothing, whole = [], texts = {}, loupes = false, drawn = null }) {
   if (nothing === null) {
     // A refused push is said once the checkout is gone, so none is left behind, and before any table is written.
     let refused = null;
@@ -721,7 +724,7 @@ function publishing(pictures, { same, nothing, whole = [], texts = {}, loupes = 
   const files = new Set(readdirSync(out));
   const table =
     nothing === null
-      ? tableOf({ parts, chosen, schemes, notes, files, before, after, page, slug, branch, pr, same, markChanges, whole, texts, loupes, onlyNew })
+      ? tableOf({ parts, chosen, schemes, notes, files, before, after, page, slug, branch, pr, same, markChanges, whole, texts, loupes, onlyNew, drawn })
       : nothingTableOf({ why: nothing, before, after, page, onlyNew });
   writeFileSync(join(out, 'table.md'), `${table}\n`);
 

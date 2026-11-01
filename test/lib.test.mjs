@@ -409,6 +409,18 @@ describe('tableOf', () => {
     // The rings are on the pair that changed, so they are still said.
     assert.match(t, /\*\*What changed\*\*/);
   });
+  it('lists only the notes whose rings were drawn, by their numbers', () => {
+    const notes = asked('--note', '.a=Bigger button', '--note', '.b=New badge').notes;
+    const t = table(pair, { notes, drawn: [1] });
+    assert.match(t, /\*\*What changed\*\*\n\n1\. Bigger button\n/);
+    assert.doesNotMatch(t, /New badge/);
+    assert.doesNotMatch(table(pair, { notes, drawn: [] }), /What changed/);
+    // Kept by a run from before drawn was: every note, as then.
+    assert.match(table(pair, { notes }), /2\. New badge/);
+  });
+  it('still says before and after when a part was the same and another new', () => {
+    assert.match(table(['hero-phone-after.png'], { same: ['hero on desk'] }), /^## Before and after\n/);
+  });
   it('says what is new, when all of it is, with no key to marks or rings there are none of', () => {
     const t = table(['hero-desk-after.png', 'hero-phone-after.png'], { markChanges: true, whole: ['hero on desk'] });
     assert.match(t, /^## What's new\n/);
@@ -641,16 +653,22 @@ describe('runsOf and runOf', () => {
     assert.deepEqual(runsOf('{"k":{"same":["a on desk"],"nothing":null}}'), { k: { same: ['a on desk'], nothing: null } });
     for (const text of ['', '{nope', 'null', '[]', '"x"', '12']) assert.deepEqual(runsOf(text), {}, text);
   });
+  it('keeps which notes were drawn, and only numbers', () => {
+    assert.deepEqual(runOf({ k: { same: [], nothing: null, drawn: [2] } }, 'k').drawn, [2]);
+    assert.equal(runOf({ k: { same: [], nothing: null } }, 'k').drawn, null);
+    assert.equal(runOf({ k: { same: [], nothing: null, drawn: ['<b>'] } }, 'k').nothing, null);
+    assert.deepEqual(runOf({ k: { same: ['x'], nothing: null, drawn: ['<b>'] } }, 'k').same, []);
+  });
   it('gives a run what it found, or nothing found when what is kept is not in that shape', () => {
     const runs = { a: { same: ['x'], nothing: null }, b: { same: [], nothing: 'Nothing to compare.' } };
-    assert.deepEqual(runOf(runs, 'a'), { same: ['x'], nothing: null, whole: [], texts: {}, loupes: false });
-    assert.deepEqual(runOf(runs, 'b'), { same: [], nothing: 'Nothing to compare.', whole: [], texts: {}, loupes: false });
-    assert.deepEqual(runOf({ c: { same: [], nothing: null, whole: ['y'] } }, 'c'), { same: [], nothing: null, whole: ['y'], texts: {}, loupes: false });
+    assert.deepEqual(runOf(runs, 'a'), { same: ['x'], nothing: null, whole: [], texts: {}, loupes: false, drawn: null });
+    assert.deepEqual(runOf(runs, 'b'), { same: [], nothing: 'Nothing to compare.', whole: [], texts: {}, loupes: false, drawn: null });
+    assert.deepEqual(runOf({ c: { same: [], nothing: null, whole: ['y'] } }, 'c'), { same: [], nothing: null, whole: ['y'], texts: {}, loupes: false, drawn: null });
     assert.deepEqual(
       runOf({ d: { same: [], nothing: null, texts: { 'a-desk-after.png': ['x **y**'] }, loupes: true } }, 'd'),
-      { same: [], nothing: null, whole: [], texts: { 'a-desk-after.png': ['x **y**'] }, loupes: true },
+      { same: [], nothing: null, whole: [], texts: { 'a-desk-after.png': ['x **y**'] }, loupes: true, drawn: null },
     );
-    const none = { same: [], nothing: null, whole: [], texts: {}, loupes: false };
+    const none = { same: [], nothing: null, whole: [], texts: {}, loupes: false, drawn: null };
     for (const kept of [undefined, null, 'x', { same: 'x' }, { same: [1] }, { same: [], nothing: 4 }, { same: [], nothing: null, whole: 'y' },
       { same: [], nothing: null, texts: ['x'] }, { same: [], nothing: null, texts: { a: 'x' } }, { same: [], nothing: null, loupes: 1 }])
       assert.deepEqual(runOf({ k: kept }, 'k'), none, JSON.stringify(kept));
