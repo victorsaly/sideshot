@@ -28,7 +28,7 @@ branch.</p>
 
 <p align="center">
   <a href="https://skills.sh"><img src="https://img.shields.io/badge/Agent_Skill-Claude_Code_%C2%B7_Codex_%C2%B7_Cursor_%C2%B7_OpenCode-000000?style=flat-square" alt="An Agent Skill, for Claude Code, Codex, Cursor and OpenCode" /></a>
-  <img src="https://img.shields.io/badge/version-0.6.3-000000?style=flat-square" alt="Version 0.6.3" />
+  <img src="https://img.shields.io/badge/version-0.7.0-000000?style=flat-square" alt="Version 0.7.0" />
   <a href="https://github.com/victorsaly/sideshot/actions/workflows/check.yml"><img src="https://img.shields.io/github/actions/workflow/status/victorsaly/sideshot/check.yml?branch=main&style=flat-square&label=check&color=000000" alt="Checks on main" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-000000?style=flat-square" alt="MIT licence" /></a>
 </p>
@@ -117,7 +117,10 @@ Add `--note` and `--mark-changes` and the picture says what changed: a numbered 
   before beside its after. When they look right, `--reuse` publishes those same pictures instead of taking new ones.
 - **Quick.** Pictures are taken four at a time, and each page is loaded and settled once for all its pictures:
   eight pictures in about seven seconds.
-- **Honest about gaps.** A part that is new or removed shows as *(not there)* on one side, and the run says so.
+- **Honest about gaps.** A part that was removed shows as *(not there)* on after, and the run says so.
+- **Something new, shown as it is.** A part that was not there before is shown on its own, with nothing drawn on
+  it, and when all of it is new the description says *What's new*. `--new` does the same sooner, never opening a
+  "before" site at all.
 - **Nothing to compare, said plainly.** A pair the same before and after is left out, and named under the table.
   When nothing is left, nothing is pushed, and the description says why.
 
@@ -182,11 +185,12 @@ node skills/sideshot/scripts/sideshot.mjs --pr 123 --page /pricing --part plans=
 | `--pr 123` | this branch's | The pull request the pictures belong to, found with the GitHub CLI when left out. |
 | `--page /path` | `/` | The page to open on both sides. |
 | `--part name=selector` | *needed* | A part to picture; repeat for more. `--part page=body` for the whole page. |
-| `--before URL` | *needed* | Where the site runs as it is: production, a preview, or `main` run locally. Can live in `.sideshot.json`. |
+| `--before URL` | *needed*, unless `--new` | Where the site runs as it is: production, a preview, or `main` run locally. Can live in `.sideshot.json`. |
 | `--after URL` | `http://localhost:3000` | Where this branch runs. |
 | `--devices list` | `desk,phone` | Where to picture it, at 2x. Names: `desk`/`web` 1280×900, `phone`/`mobile` 390×844, `tablet` 820×1180, `laptop` 1440×900, `wide` 1920×1080. Or sizes: `1024x768`, or your own name, `pixel=412x915:mobile` (`:mobile` for a touch screen). |
 | `--schemes list` | `light` | `light`, `dark`, or `light,dark`. |
 | `--click "selector"` | | Something to press first: a tab, a panel, a menu. |
+| `--new` | | A new feature, with nothing before it: pictures only after, as it is, with no notes or marks, under *What's new*, without opening before. No `--before` needed. (A part not there before is shown that way without it, only later.) |
 | `--note "selector=words"` | | Rings that element on the after picture with a number; the words go under the table. Repeat. |
 | `--mark-changes` | off | Outlines what was added or changed; a dashed rule where something was taken out. |
 | `--accent colour` | `auto` | The marking colour: `auto` (marigold, unless the page is close to it), `marigold`, `magenta`, `cyan`, `violet`, `lime`, or `#hex`. |
@@ -202,7 +206,7 @@ node skills/sideshot/scripts/sideshot.mjs --pr 123 --page /pricing --part plans=
 | `--prune` | | Takes off the picture branch the pictures of pull requests closed or merged a while ago, so the repository does not grow for ever. The branch becomes one commit of what is left, and those pull requests no longer show their pictures. Needs the GitHub CLI, not a browser. |
 | `--older-than days` | `30` | With `--prune`: how long ago. |
 
-Every option but `--part`, `--note`, `--publish`, `--update-pr`, `--reuse` and `--prune` can also live in
+Every option but `--part`, `--note`, `--new`, `--publish`, `--update-pr`, `--reuse` and `--prune` can also live in
 `.sideshot.json`, under its own name (`markChanges: true`, `watermark: false`, `olderThan`). `--help` lists everything.
 
 A `--setup` file, for a page whose data only production can reach:

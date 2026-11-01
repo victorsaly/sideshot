@@ -160,10 +160,34 @@ describe('sideshot.mjs', { concurrency: true }, () => {
   });
 
   it('says which parts are not on the page', async () => {
-    const result = await shoot('8', '--part', 'badge=.new', '--devices', 'desk', '--wait', '0', '--no-watermark');
+    const result = await shoot('8', '--part', 'badge=.new', '--devices', 'desk', '--wait', '0', '--no-watermark',
+      '--mark-changes', '--note', '.new=The badge');
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /Not on the page \(new or removed\): badge before on desk/);
+    // All of it new, found by itself: shown as it is, and --new named as the quicker way, with no before to open.
+    assert.match(result.stdout, /None of it is on before, so it is shown as new, with nothing drawn on it\. --new/);
+    assert.doesNotMatch(result.stdout, /Marked|Marking in/);
+    // Nothing drawn on it, though a note and marks were asked for: no plain copy.
     assert.deepEqual(readdirSync(join(out, '8')).sort(), ['badge-desk-after.png', 'badge-overview.png', 'run.json']);
+  });
+
+  it('pictures only after for something new, with no before and nothing drawn on it', async () => {
+    const result = await run(['--pr', '19', '--after', addressOf(now), '--out', out, '--new',
+      '--part', 'badge=.new', '--devices', 'desk,phone', '--wait', '0']);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Took 2 pictures into .* in \d+\.\ds\./);
+    assert.doesNotMatch(result.stdout, /Not on the page|None of it is on before|Marked|Marking in/);
+    // Only after, and no plain copy: nothing was drawn on it but the tag.
+    assert.deepEqual(readdirSync(join(out, '19')).sort(),
+      ['badge-desk-after.png', 'badge-overview.png', 'badge-phone-after.png', 'run.json']);
+  });
+
+  it('stops when what is new is not on the page, and says so', async () => {
+    const result = await run(['--pr', '20', '--after', addressOf(was), '--out', out, '--new',
+      '--part', 'badge=.new', '--devices', 'desk', '--wait', '0']);
+    assert.equal(result.status, 3, result.stderr);
+    assert.match(result.stdout, /nothing new to picture on \/: the part is not on the page on badge on desk\./);
+    assert.deepEqual(readdirSync(join(out, '20')), ['run.json']);
   });
 
   it('refuses what it cannot use before opening anything, and writes nothing', async () => {

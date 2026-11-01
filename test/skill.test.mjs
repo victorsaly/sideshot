@@ -231,6 +231,17 @@ describe('the evals', () => {
       takes: ['node sideshot.mjs --prune --older-than 3', 'node sideshot.mjs --older-than "3" --prune'],
       refuses: ['node sideshot.mjs --prune --older-than 30', 'node sideshot.mjs --prune --older-than 3.5'],
     },
+    'new-feature-only-after/graders/command.md': {
+      takes: [
+        'node sideshot.mjs --page /account --part banner=.referral-banner --after http://localhost:3000 --new',
+        "node sideshot.mjs --new --part 'referral=.referral-banner' --page /account",
+      ],
+      refuses: [
+        'node sideshot.mjs --page /account --part banner=.referral-banner --before https://example.com --after http://localhost:3000',
+        'node sideshot.mjs --part banner=.referral-banner --newer',
+        'node sideshot.mjs --new --part banner=.referral-banner-old',
+      ],
+    },
     'show-reviewers-the-button/graders/command.md': {
       takes: [
         'node sideshot.mjs --page /cart --part "checkout=.checkout button" --before https://example.com ' +

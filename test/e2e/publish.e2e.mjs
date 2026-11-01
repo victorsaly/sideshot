@@ -316,4 +316,32 @@ esac
     assert.equal(none.status, 1);
     assert.match(none.stderr, /Give the pull request/);
   });
+
+  it("publishes what is new on its own, under What's new, and again with --reuse", async () => {
+    writeFileSync(body, 'Adds a badge.\n');
+    const result = await run(['--pr', '12', '--after', addressOf(now), '--devices', 'desk', '--wait', '0', '--new',
+      '--part', 'badge=.new', '--update-pr'], { cwd: project, env });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(onBranch().filter((f) => f.startsWith('12/')), ['12/badge-desk-after.png']);
+    const text = readFileSync(body, 'utf8');
+    assert.match(text, /<!-- sideshot:start -->\n## What's new\n\n\*\*badge, desk\*\*/);
+    assert.ok(text.includes('<img src="https://github.com/test-owner/test-repo/raw/refs/heads/sideshot/12/badge-desk-after.png"'), text);
+    assert.doesNotMatch(text, /Before|not there/);
+    // Published again as it was looked at: nothing answers at after, and nothing is taken again.
+    writeFileSync(body, 'Adds a badge.\n');
+    const again = await run(['--pr', '12', '--after', 'http://127.0.0.1:9', '--devices', 'desk', '--new',
+      '--part', 'badge=.new', '--update-pr', '--reuse'], { cwd: project, env });
+    assert.equal(again.status, 0, again.stderr);
+    assert.match(readFileSync(body, 'utf8'), /## What's new\n/);
+  });
+
+  it("says what's new by itself when no part was there before", async () => {
+    writeFileSync(body, 'Adds a badge.\n');
+    const result = await publish(['--part', 'badge=.new', '--update-pr'], { pr: '13' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(onBranch().filter((f) => f.startsWith('13/')), ['13/badge-desk-after.png']);
+    const text = readFileSync(body, 'utf8');
+    assert.match(text, /<!-- sideshot:start -->\n## What's new\n\n\*\*badge, desk\*\* <sub>1280×900<\/sub>\n\n<img /);
+    assert.doesNotMatch(text, /not there|\| Before/);
+  });
 });

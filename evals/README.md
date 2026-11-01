@@ -15,6 +15,7 @@ real agent a message a person might type and grades the reply.
 | `api-change-not-visible` | A near miss: the pricing page's API changed, but nothing on screen | SideShot is not used, nor its command proposed | |
 | `one-screenshot-not-a-pr` | A near miss: one screenshot of the home page, for the docs | SideShot is not used, nor its command proposed | |
 | `show-reviewers-the-button` | "Show the reviewers how it looked and how it looks now", with no word for pictures | Only `.checkout button` on /cart, before and after, shown first | `--page /cart --part …=.checkout button`, `--before` and `--after` as given |
+| `new-feature-only-after` | Screenshots of a banner that did not exist before | Only `.referral-banner` as it is now, with no before-and-after marks, shown first | `--new --part …=.referral-banner` |
 
 The near misses are what a description that says too much would pull SideShot into; the last case is what one that
 says too little would miss. They came in with 0.5.5, which found the last one missed once in three: the agent named

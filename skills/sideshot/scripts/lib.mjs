@@ -195,17 +195,23 @@ export function optionsOf(args, config = {}) {
   const list = (flag, key, fallback) => listOf(all(flag)[0], config[key], fallback);
 
   const pr = one('--pr', 'pr', '');
+  // A new feature has nothing before it to compare: only after is pictured, as it is, so before is not asked for.
+  const onlyNew = args.includes('--new');
   const before = one('--before', 'before', '');
   const parts = all('--part').map((p) => {
     const [name, selector] = splitOnce(p);
     return { name: name || 'page', selector: selector || 'body' };
   });
-  if (!/^\d+$/.test(pr) || parts.length === 0 || before === '')
+  if (!/^\d+$/.test(pr) || parts.length === 0 || (before === '' && !onlyNew))
     throw new UsageError(
-      'Give the pull request, where "before" lives, and at least one part:\n' +
+      'Give the pull request, where "before" lives (or --new, for a new feature with nothing before it), and at least\n' +
+        'one part:\n' +
         '  --pr 123 --before https://example.com --part hero=.hero\n' +
         '(--before and --after can also be set in .sideshot.json)',
     );
+  // With nothing before it, there is nothing to mark a change against, and a ring would only say "new" on what is.
+  if (onlyNew && (args.includes('--note') || args.includes('--mark-changes')))
+    throw new UsageError('--new pictures what is new as it is, with nothing drawn on it: leave out --note and --mark-changes.');
   const unsafe = parts.filter((p) => !safeName.test(p.name)).map((p) => p.name);
   if (unsafe.length > 0)
     throw new UsageError(
@@ -247,7 +253,7 @@ export function optionsOf(args, config = {}) {
   return {
     pr,
     page: page.startsWith('/') ? page : `/${page}`,
-    before: baseOf('--before', before),
+    before: onlyNew ? null : baseOf('--before', before),
     after: baseOf('--after', one('--after', 'after', 'http://localhost:3000')),
     wait: Number(waitText),
     jobs: Number(jobsText),
@@ -264,12 +270,13 @@ export function optionsOf(args, config = {}) {
       return { n: i + 1, selector, text };
     }),
     accent: accentOf(one('--accent', 'accent', 'auto')),
-    markChanges: args.includes('--mark-changes') || config.markChanges === true,
+    markChanges: !onlyNew && (args.includes('--mark-changes') || config.markChanges === true),
     // Each pair carries a small SideShot tag in the corner of its "after" picture, unless asked not to.
     watermark: !args.includes('--no-watermark') && config.watermark !== false,
     publish,
     updatePr,
     reuse,
+    onlyNew,
   };
 }
 
@@ -382,6 +389,8 @@ What to picture
   --devices list           desk 1280x900, phone 390x844, tablet, laptop, wide, 1024x768, or your own
                            name=412x915:mobile (default desk,phone; web and mobile are desk and phone)
   --schemes list           light, dark, or light,dark (default light)
+  --new                    a new feature, with nothing before it: only after is pictured, as it is, with
+                           nothing drawn on it, and no --before is needed
 
 Where before and after run
   --before URL             the site as it is: production, a preview, or main run locally
@@ -473,23 +482,26 @@ export function runOf(runs, key) {
 
 /** What a run is known by, beside its pictures: its page, parts, devices and schemes. Two runs for one pull request
  * (two pages) each keep what they found, and --reuse finds the one it repeats. */
-export const runKeyOf = ({ page, parts, chosen, schemes }) =>
-  JSON.stringify([page, parts.map((p) => `${p.name}=${p.selector}`), chosen.map((d) => d.name), schemes]);
+export const runKeyOf = ({ page, parts, chosen, schemes, onlyNew = false }) =>
+  JSON.stringify([page, parts.map((p) => `${p.name}=${p.selector}`), chosen.map((d) => d.name), schemes, ...(onlyNew ? ['new'] : [])]);
 
 /** Where each side came from, shown without a login or a token: the description is read by everyone who can see
- * the pull request. */
+ * the pull request. Something new has no before to name. */
 function sourcesOf(before, after, page) {
   const named = (base) => {
     const where = new URL(`${base}${page}`);
     return ['localhost', '127.0.0.1', '[::1]'].includes(where.hostname) ? 'run locally' : shownOf(where.href);
   };
-  return `<sub>Before: ${named(before)} · After: ${named(after)} · made with [SideShot](https://github.com/victorsaly/sideshot)</sub>`;
+  const sides = before === null ? `After: ${named(after)}` : `Before: ${named(before)} · After: ${named(after)}`;
+  return `<sub>${sides} · made with [SideShot](https://github.com/victorsaly/sideshot)</sub>`;
 }
+const headingOf = (onlyNew) => (onlyNew ? "## What's new" : '## Before and after');
 
 /** Why a run has nothing to compare, in words for the person running it and for the pull request: pairs the
- * same before and after, pixel for pixel, and parts on neither side. */
-export function nothingOf({ same, gone, page }) {
+ * same before and after, pixel for pixel, and parts on neither side. Something new is only looked for after. */
+export function nothingOf({ same, gone, page, onlyNew = false }) {
   const path = new URL(page, 'http://localhost').pathname;
+  if (onlyNew) return `SideShot found nothing new to picture on ${path}: the part is not on the page on ${gone.join(', ')}.`;
   const why = [];
   if (same.length > 0) why.push(`before and after are the same, pixel for pixel, on ${same.join(', ')}`);
   if (gone.length > 0) why.push(`the part is on neither side on ${gone.join(', ')}`);
@@ -497,9 +509,9 @@ export function nothingOf({ same, gone, page }) {
 }
 
 /** What goes in the description in place of a table when there was nothing to compare: that, and why. */
-export const nothingTableOf = ({ why, before, after, page }) =>
+export const nothingTableOf = ({ why, before, after, page, onlyNew = false }) =>
   [
-    '## Before and after',
+    headingOf(onlyNew),
     '',
     `${why} The change may not show on this page, or not in the parts pictured, so there are no pictures.`,
     '',
@@ -564,48 +576,56 @@ export function textDiffOf(before, after) {
   return lines;
 }
 
-export function tableOf({ parts, chosen, schemes, notes, files, before, after, page, slug, branch, pr, same = [], markChanges = false, whole = [], texts = {}, loupes = false }) {
+export function tableOf({ parts, chosen, schemes, notes, files, before, after, page, slug, branch, pr, same = [], markChanges = false, whole = [], texts = {}, loupes = false, onlyNew = false }) {
   // Through github.com, not raw.githubusercontent.com: that answers 404 for a private repository, even to those who
   // can read it, where github.com sends them on with their sign-in. The branch in full (refs/heads/), so one with a
   // slash in it is not taken for part of the path.
   const url = (file) => `https://github.com/${slug}/raw/refs/heads/${branch}/${pr}/${file}`;
-  const lines = ['## Before and after', ''];
-  for (const part of parts) {
-    for (const device of chosen) {
+  // The pairs shown. With --new nothing was taken before, so a before left from an earlier run is not one of them.
+  const pairs = [];
+  for (const part of parts)
+    for (const device of chosen)
       for (const scheme of schemes) {
         const b = pictureName(part.name, device.name, scheme, 'before');
         const a = pictureName(part.name, device.name, scheme, 'after');
-        if (!files.has(b) && !files.has(a)) continue;
-        lines.push(
-          `**${part.name}, ${label(device.name, scheme)}** <sub>${device.size}</sub>`,
-          '',
-          '| Before | After |',
-          '| --- | --- |',
-        );
-        const cell = (f) => (files.has(f) ? `<img src="${url(f)}" width="420">` : '(not there)');
-        lines.push(`| ${cell(b)} | ${cell(a)} |`, '');
-        // What the words say now that they did not, under the pair: a mark cannot name the word.
-        const said = Object.hasOwn(texts, a) ? texts[a] : [];
-        if (said.length > 0) lines.push(...said.map((line) => `<sub>Text: ${line}</sub>`), '');
+        const was = !onlyNew && files.has(b);
+        if (was || files.has(a)) pairs.push({ part, device, scheme, b, a, was });
       }
+  // Something new, said with --new or found with no before at all: shown as it is, with nothing drawn on it, so
+  // there are no marks or rings to explain.
+  const allNew = pairs.length > 0 && pairs.every((p) => !p.was);
+  const lines = [headingOf(allNew), ''];
+  const cell = (f) => (files.has(f) ? `<img src="${url(f)}" width="420">` : '(not there)');
+  for (const { part, device, scheme, b, a, was } of pairs) {
+    // Among pairs that changed, a new one says so; under "What's new", the heading already has.
+    const size = was || allNew ? device.size : `${device.size} · new`;
+    lines.push(`**${part.name}, ${label(device.name, scheme)}** <sub>${size}</sub>`, '');
+    // A column for a before that never was would only say so.
+    if (!was) {
+      lines.push(cell(a), '');
+      continue;
     }
+    lines.push('| Before | After |', '| --- | --- |', `| ${cell(b)} | ${cell(a)} |`, '');
+    // What the words say now that they did not, under the pair: a mark cannot name the word.
+    const said = Object.hasOwn(texts, a) ? texts[a] : [];
+    if (said.length > 0) lines.push(...said.map((line) => `<sub>Text: ${line}</sub>`), '');
   }
   // A pair left out for showing no change is still said: the reviewer knows it was looked at.
   if (same.length > 0) lines.push(`<sub>The same before and after, so not shown: ${same.join(', ')}.</sub>`, '');
   // What the marks mean, for a reader who has not met SideShot, and where a part was boxed once for differing
   // nearly everywhere, which is a style change more often than many.
-  if (markChanges)
+  if (markChanges && !allNew)
     lines.push(
       `<sub>Boxed: added or changed · dashed rule: taken out · dashed box on before: where it was${loupes ? ' · inset: a small change at 3×' : ''}.</sub>`,
       '',
     );
-  if (whole.length > 0)
+  if (whole.length > 0 && !allNew)
     lines.push(
       `<sub>Most of the part differs on ${whole.join(', ')}, so it is boxed once: likely a style change (colour, font, spacing).</sub>`,
       '',
     );
   // The numbered rings on the "after" pictures, said in words.
-  if (notes.length > 0)
+  if (notes.length > 0 && !allNew)
     lines.push('**What changed**', '', ...notes.map((note) => `${String(note.n)}. ${note.text}`), '');
   lines.push(sourcesOf(before, after, page));
   return lines.join('\n');
