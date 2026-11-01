@@ -2,7 +2,14 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   UsageError,
+  attachmentNameOf,
+  azureApiOf,
+  azureAuthOf,
+  azureBaseOf,
+  azureOf,
+  azurePrOf,
   bareOf,
+  describedWith,
   bodyWith,
   configOf,
   deviceOf,
@@ -14,6 +21,7 @@ import {
   splitNote,
   markers,
   nothingOf,
+  ownThreadOf,
   nothingTableOf,
   optionsOf,
   pictureName,
@@ -95,6 +103,70 @@ describe('isBranchName', () => {
   it('refuses what git would take as an option, or would not take at all', () => {
     for (const b of ['--upload-pack=touch x', '-b', 'a..b', 'a//b', 'a/.b', 'a.lock', 'a/', 'a.', 'a b', ''])
       assert.ok(!isBranchName(b), b);
+  });
+});
+
+describe('azureOf', () => {
+  const fabrikam = { org: 'fabrikam', project: 'Web Shop', repo: 'storefront' };
+  it('reads every way Azure DevOps is reached', () => {
+    for (const remote of [
+      'https://dev.azure.com/fabrikam/Web%20Shop/_git/storefront',
+      'https://fabrikam.visualstudio.com/Web%20Shop/_git/storefront',
+      'https://fabrikam.visualstudio.com/DefaultCollection/Web%20Shop/_git/storefront/',
+      'git@ssh.dev.azure.com:v3/fabrikam/Web%20Shop/storefront',
+      'ssh://git@ssh.dev.azure.com/v3/fabrikam/Web%20Shop/storefront',
+      'fabrikam@vs-ssh.visualstudio.com:v3/fabrikam/Web%20Shop/storefront',
+    ])
+      assert.deepEqual(azureOf(remote), fabrikam, remote);
+  });
+  it('keeps a login in the address out of what it reads', () => {
+    const remote = loginIn('https://dev.azure.com/fabrikam/Web%20Shop/_git/storefront', ['someone', 'not-a-real-token']);
+    assert.deepEqual(azureOf(remote), fabrikam);
+  });
+  it('is null for anything not on Azure DevOps, or that would leave its path', () => {
+    for (const remote of ['https://github.com/o/r.git', 'https://dev.azure.com/fabrikam/p/_git/..',
+      'https://dev.azure.com/fabrikam/p%2F..%2Fx/_git/r', 'https://dev.azure.com/fabrikam/p/_git/%E0%A4%A', ''])
+      assert.equal(azureOf(remote), null, remote);
+  });
+  it('makes the API address with each name escaped', () => {
+    assert.equal(azureApiOf(fabrikam, 'https://dev.azure.com'),
+      'https://dev.azure.com/fabrikam/Web%20Shop/_apis/git/repositories/storefront');
+  });
+  it('is asked of dev.azure.com, unless a test points it at a server on this machine', () => {
+    assert.equal(azureBaseOf({}), 'https://dev.azure.com');
+    assert.equal(azureBaseOf({ SIDESHOT_AZURE_URL: 'http://127.0.0.1:4000/' }), 'http://127.0.0.1:4000');
+    // A token is sent there: never to another machine.
+    assert.equal(azureBaseOf({ SIDESHOT_AZURE_URL: 'https://example.com' }), 'https://dev.azure.com');
+  });
+  it('signs in with a personal access token, or a pipeline\'s own token, or neither', () => {
+    assert.equal(azureAuthOf({ AZURE_DEVOPS_EXT_PAT: 'abc' }), `Basic ${Buffer.from(':abc').toString('base64')}`);
+    assert.equal(azureAuthOf({ SYSTEM_ACCESSTOKEN: 'xyz' }), 'Bearer xyz');
+    assert.equal(azureAuthOf({ AZURE_DEVOPS_EXT_PAT: ' ', SYSTEM_ACCESSTOKEN: '' }), null);
+  });
+  it('takes the one active pull request from this branch, never one from a fork', () => {
+    assert.equal(azurePrOf({ value: [{ pullRequestId: 7 }, { pullRequestId: 9, forkSource: { name: 'x' } }] }), '7');
+    assert.equal(azurePrOf({ value: [{ pullRequestId: 7 }, { pullRequestId: 8 }] }), null);
+    assert.equal(azurePrOf({ value: [] }), null);
+    assert.equal(azurePrOf(null), null);
+  });
+  it('names an attachment by what the picture holds, so the same picture is not sent twice', () => {
+    assert.equal(attachmentNameOf('card-desk-after.png', '0123456789abcdef0123'), '0123456789ab-card-desk-after.png');
+  });
+  it("finds SideShot's own comment among the threads, and no other", () => {
+    const threads = { value: [
+      { id: 1, comments: [{ id: 1, content: 'Looks good' }] },
+      { id: 2, isDeleted: true, comments: [{ id: 1, content: `${markers.start}\nold` }] },
+      { id: 3, comments: [{ id: 1, content: `${markers.start}\ntable\n${markers.end}` }, { id: 2, content: 'Thanks' }] },
+    ] };
+    assert.deepEqual(ownThreadOf(threads), { thread: 3, comment: 1 });
+    assert.equal(ownThreadOf({ value: [{ id: 4, comments: [{ id: 1, content: `quoting ${markers.start}`, isDeleted: true }] }] }), null);
+    assert.equal(ownThreadOf(null), null);
+  });
+  it('points the description to the comment, between the markers, when that fits in 4000 characters', () => {
+    const said = describedWith('Fixes the card.', 'Pictures: in the comment.');
+    assert.equal(said, `Fixes the card.\n\n${markers.start}\nPictures: in the comment.\n${markers.end}\n`);
+    assert.equal(describedWith(said, 'Pictures: in the comment.'), said);
+    assert.equal(describedWith('x'.repeat(3990), 'Pictures: in the comment.'), null);
   });
 });
 
@@ -467,6 +539,13 @@ describe('tableOf', () => {
     });
     assert.ok(t.includes('Before: https://preview.example.com/pricing · After: run locally'), t);
     assert.doesNotMatch(t, /someone|not-a-real/);
+  });
+  it('links each picture where it was put, when it was not put on the branch', () => {
+    const at = (f) => `https://dev.azure.com/o/p/_apis/git/repositories/r/pullRequests/12/attachments/ab-${f}`;
+    const links = { 'hero-desk-before.png': at('hero-desk-before.png'), 'hero-desk-after.png': at('hero-desk-after.png') };
+    const t = table(['hero-desk-before.png', 'hero-desk-after.png'], { links, slug: null, branch: null });
+    assert.ok(t.includes(`<img src="${links['hero-desk-after.png']}" width="420">`), t);
+    assert.doesNotMatch(t, /<img src="https:\/\/github\.com|\/null\//);
   });
   it('shows what is new on its own, with no before and nothing said of one', () => {
     // A before of the phone, left from an earlier run, is not a pair of this one.

@@ -9,6 +9,18 @@ When production cannot show the page as it needs (behind a login, or showing dif
 the branch: `git worktree add ../<repo>-main origin/main`, install, build and serve it on another port in the
 background, and give that as `--before http://localhost:4322`. Stop it and remove the worktree afterwards.
 
+## Azure DevOps
+
+When origin is on Azure DevOps (dev.azure.com, or an older `*.visualstudio.com`), taking and looking are the same;
+publishing differs:
+
+- **Sign-in:** `az login` with the Azure CLI, or a personal access token with Code (read and write) in
+  `AZURE_DEVOPS_EXT_PAT`. In a pipeline, `SYSTEM_ACCESSTOKEN` is used. Without one, publishing stops and says so.
+- **Where the pictures go:** attachments of the pull request, not a branch, so there is nothing to `--prune`.
+- **Where the table goes:** a comment of SideShot's own on the pull request, replaced on every run and posted as
+  closed, so it never holds a merge that wants every comment resolved. A description holds only 4000 characters;
+  it gets one line saying where the pictures are, when that fits.
+
 ## Pages whose data only exists in production
 
 When a page reads live data the local server cannot reach (an API behind auth, a database), give it stand-in data
