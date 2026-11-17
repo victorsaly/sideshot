@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.0 (unreleased)
+
+- **What is private is covered on every picture, before it is kept.** Email addresses, card numbers, IBANs, keys
+  and tokens (Stripe, GitHub, AWS, Slack, Google, OpenAI, Anthropic, JWTs, private keys), and filled form fields
+  whose `autocomplete` says they hold a phone, an address, a name or the like, get a solid grey box, the same on
+  before and after, so none is marked as a change. The words the table says changed put `[hidden]` in their place.
+  Nothing private is written to disk on the way: the picture is covered before it is saved. The run says how many
+  of each it hid.
+- **`--mask "selector"`**, repeated or as `"mask"` in `.sideshot.json`, and `data-sideshot-mask` in the page,
+  hide anything else, whole: a customer's name, an account number.
+
 ## 0.7.1 (2026-11-01)
 
 - **A ring's number is never cut off at the picture's edge.** A part at the very top or left of the page (a site

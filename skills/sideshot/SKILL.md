@@ -3,7 +3,7 @@ name: sideshot
 description: Before-and-after screenshots of the part of a page a pull request changes (a component, a section, a style), not the whole page, on a desk and a phone, optionally in dark mode, with what changed marked, shown to the user first, then kept on a branch of their own and put in the PR description as a table. Use when opening or updating a PR with visible UI changes, or when asked for before and after pictures, screenshots for review, to show reviewers how something looked and looks now, visual proof of a change, or to "sideshot" a PR. Load it before planning the pictures, even when asked not to run anything yet.
 license: MIT
 metadata:
-  version: 0.7.1
+  version: 0.8.0
   homepage: https://github.com/victorsaly/sideshot
 allowed-tools: Bash(node ${CLAUDE_SKILL_DIR}/scripts/*)
 ---
@@ -49,8 +49,8 @@ node <this skill's folder>/scripts/sideshot.mjs --page /pricing --part plans=#pl
 ```
 
 It says, in a few lines, where the pictures are (`.sideshot/<pr>/`) and names an overview sheet for each part,
-every pair before beside after. **Open the overview, not each picture.** Check that the part is the right one and
-that the change shows; the run also says where nothing changed, what is not on the page, and what could not be
+every pair before beside after. **Open the overview, not each picture.** Check that the part is the right one,
+that the change shows, and that nothing private is left uncovered; the run also says where nothing changed, what is not on the page, and what could not be
 pressed. If the page was not done drawing, give it longer (`--wait 3000`) and run again.
 
 A pair that is the same before and after is not kept. When nothing is left to compare, the run stops (exit 3) and
@@ -81,4 +81,8 @@ again then.
 - **Playwright** comes from the project, or from a global install for a project without Node. If there is none,
   the script says so: ask before adding it.
 - **Add `.sideshot/` to `.gitignore`.**
+- **What is private is covered on every picture**, before it is kept: email addresses, card numbers, IBANs, keys
+  and tokens, and filled fields that hold a phone, an address or a name. The run says how many. Names and
+  addresses in plain text have no shape to find: hide them with `--mask ".customer-name"` (repeat for more), or
+  better, picture stand-in data ([reference.md](reference.md)).
 - Running `main` locally as "before", stand-in data, devices, colours and the tag: [reference.md](reference.md).

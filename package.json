@@ -8,7 +8,7 @@
   },
   "scripts": {
     "test": "node --test 'test/*.test.mjs'",
-    "test:coverage": "node --test --experimental-test-coverage --test-coverage-include='skills/**/lib.mjs' --test-coverage-lines=90 --test-coverage-branches=80 'test/*.test.mjs'",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-include='skills/**/lib.mjs' --test-coverage-include='skills/**/hide.mjs' --test-coverage-lines=90 --test-coverage-branches=80 'test/*.test.mjs'",
     "test:e2e": "node --test 'test/e2e/*.e2e.mjs'",
     "lint": "eslint .",
     "typecheck": "tsc -p .",

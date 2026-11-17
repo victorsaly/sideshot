@@ -403,6 +403,11 @@ What is drawn on the pictures
   --accent auto            the marking colour: auto, marigold, magenta, cyan, violet, lime, or #hex
   --no-watermark           no SideShot tag in the corner of the after pictures
 
+What is hidden, always, before a picture is kept
+  --mask selector          hide every element it finds, whole; repeat for more. Hidden too, on every run:
+                           what the page marks data-sideshot-mask, email addresses, card numbers, IBANs,
+                           keys and tokens, and filled fields that hold a phone, an address, a name or the like
+
 Running
   --wait ms                time a part is given to settle before it is pictured (default 1500)
   --jobs N                 pictures taken at once (default 4)
@@ -420,8 +425,8 @@ Cleaning up
 A pair the same before and after is not kept. With nothing left to compare, it stops (exit 3), and with
 --update-pr the description says so, and why.
 
-Defaults can live in .sideshot.json at the project's root, under the same names (markChanges, and
-"watermark": false), so later runs need only --part:
+Defaults can live in .sideshot.json at the project's root, under the same names (markChanges,
+"watermark": false, and "mask": [".customer-name"], which --mask adds to), so later runs need only --part:
   { "before": "https://example.com", "after": "http://localhost:4321", "devices": ["desk", "phone"] }`;
 
 /** An address as it may be shown, in a description or a log: without what else it can carry, a login before the
