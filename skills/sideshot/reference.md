@@ -42,16 +42,17 @@ which `--mask` adds to.
 ## What is hidden
 
 Every picture is looked over before it is kept, and what is private is covered with a solid grey box (not a blur,
-which can be read back), the same on before and after, so it is never marked as a change:
+which can be read back), the same on before and after, so it is never marked as a change. It is looked for just
+before each picture and just after, and both places are covered, for a page that redraws while it is pictured:
 
 - **Found by its shape**: email addresses, card numbers (that pass the card check), IBANs (that pass theirs), and
   keys and tokens shaped as their makers shape them: Stripe, GitHub, AWS, Slack, Google, OpenAI, Anthropic, JWTs,
   and private key blocks.
-- **Filled form fields** whose `autocomplete` says they hold an email, a phone, a card, an address, a name, a
+- **Filled form fields** (inputs, text areas and selects) whose `autocomplete` says they hold an email, a phone, a card, an address, a name, a
   one-time code, a date of birth or a password.
 - **What the project marks**: any element with `data-sideshot-mask`, and every element a `--mask` selector finds
-  (or `"mask": [".customer-name"]` in `.sideshot.json`), each covered whole. A `--mask` that finds nothing on any
-  picture is said, since a typo would leave shown what it was to hide.
+  (or `"mask": [".customer-name"]` in `.sideshot.json`), each covered whole (one with no box of its own, as
+  `display: contents`, by what is in it). A `--mask` that finds nothing on any picture is said, since a typo would leave shown what it was to hide.
 
 In the words the table says changed, each is put as `[hidden]`. Not found: names, street addresses and notes in
 plain text, words in images, a `<canvas>` or a video, and what is inside an iframe. For a page full of real

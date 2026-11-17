@@ -25,14 +25,39 @@ const isIban = (text) => {
 
 // What is found in words, each by its shape. Names, street addresses and free text have none, and are left to the
 // project to mark (data-sideshot-mask, --mask) or to stand in for (--setup).
+// Between a number's groups, a space, a dash, or what a page's source puts between the elements of each group: a
+// line break and its indent, which the page shows as one space.
+const gap = String.raw`(?:\s{1,12}|-)?`;
+
+/** The groups of m (its runs of letters and digits, between the gaps) as [start, end, text]. */
+const groupsOf = (m) => [...m.matchAll(/[A-Z0-9]+/g)].map((g) => [g.index, g.index + g[0].length, g[0]]);
+
+/** Where in a run of digits (m) a card number is, as [start, end] in m: the most groups that pass the check, so a
+ * card with a code or a reference beside it is still found. A group is never cut, or a card could be found by chance
+ * inside any long number. Null when none does. */
+const cardIn = (m) => {
+  const groups = groupsOf(m);
+  for (let n = groups.length; n >= 1; n--)
+    for (let s = 0; s + n <= groups.length; s++) {
+      const digits = groups.slice(s, s + n).map((g) => g[2]).join('');
+      if (digits.length >= 13 && digits.length <= 19 && isCard(digits)) return [groups[s][0], groups[s + n - 1][1]];
+    }
+  return null;
+};
+
+/** Where in m an IBAN is, from its start: the most groups that pass the check, so a currency or a word after it is
+ * not taken for part of it. Null when none does. */
+const ibanIn = (m) => {
+  const groups = groupsOf(m);
+  for (let n = groups.length; n >= 1; n--)
+    if (groups.slice(0, n).map((g) => g[2]).join('').length >= 15 && isIban(groups.slice(0, n).map((g) => g[2]).join(''))) return [0, groups[n - 1][1]];
+  return null;
+};
+
 const shapes = [
   { kind: 'email', pattern: /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g },
-  { kind: 'card', pattern: /\b\d(?:[ -]?\d){12,18}\b/g, check: (m) => isCard(m.replace(/\D/g, '')) },
-  {
-    kind: 'iban',
-    pattern: /\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,3})?\b/g,
-    check: (m) => isIban(m.replaceAll(' ', '')),
-  },
+  { kind: 'card', pattern: new RegExp(String.raw`\b\d(?:${gap}\d){12,22}\b`, 'g'), within: cardIn },
+  { kind: 'iban', pattern: new RegExp(String.raw`\b[A-Z]{2}\d{2}(?:${gap}[A-Z0-9]{4}){2,7}(?:${gap}[A-Z0-9]{1,3})?\b`, 'g'), within: ibanIn },
   // Keys and tokens as their makers shape them: Stripe, GitHub, AWS, Slack, Google, OpenAI and Anthropic, a JWT,
   // and a private key, whole.
   {
@@ -56,10 +81,11 @@ const shapes = [
 
 /** Where in these words something private is, and what: [{ start, end, kind }], in order, none overlapping. */
 export function sensitiveIn(text) {
-  const found = shapes.flatMap(({ kind, pattern, check }) =>
-    [...text.matchAll(pattern)]
-      .filter((m) => !check || check(m[0]))
-      .map((m) => ({ start: m.index, end: m.index + m[0].length, kind })),
+  const found = shapes.flatMap(({ kind, pattern, within }) =>
+    [...text.matchAll(pattern)].flatMap((m) => {
+      const [start, end] = within ? (within(m[0]) ?? [-1, -1]) : [0, m[0].length];
+      return start === -1 ? [] : [{ start: m.index + start, end: m.index + end, kind }];
+    }),
   );
   found.sort((a, b) => a.start - b.start || b.end - a.end);
   return found.filter((m, i) => i === 0 || found.slice(0, i).every((o) => o.end <= m.start));

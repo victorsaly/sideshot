@@ -6,8 +6,9 @@
   and tokens (Stripe, GitHub, AWS, Slack, Google, OpenAI, Anthropic, JWTs, private keys), and filled form fields
   whose `autocomplete` says they hold a phone, an address, a name or the like, get a solid grey box, the same on
   before and after, so none is marked as a change. The words the table says changed put `[hidden]` in their place.
-  Nothing private is written to disk on the way: the picture is covered before it is saved. The run says how many
-  of each it hid.
+  Nothing private is written to disk on the way: the picture is covered before it is saved, where it was found just
+  before the picture and just after. Card numbers and IBANs are found across line breaks and beside other words.
+  The run says how many of each it hid.
 - **`--mask "selector"`**, repeated or as `"mask"` in `.sideshot.json`, and `data-sideshot-mask` in the page,
   hide anything else, whole: a customer's name, an account number. One that finds nothing on any picture is said.
 

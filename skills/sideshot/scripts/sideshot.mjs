@@ -401,14 +401,18 @@ async function hiddenOn(p, clip, masks) {
         }
         const el = /** @type {HTMLInputElement} */ (n);
         if (el.shadowRoot) roots.push(el.shadowRoot);
-        if ((el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') && inside(el.getBoundingClientRect())) fields.push(el);
+        if (/^(?:INPUT|TEXTAREA|SELECT)$/.test(el.tagName) && inside(el.getBoundingClientRect())) fields.push(el);
       }
     }
     const shown = runs.filter((r) => r.shows);
     /** @type {any} */ (window).sideshotFound = { runs: shown, fields };
     return {
       words: shown.map((r) => r.words),
-      fields: fields.map((f) => ({ value: f.value, autocomplete: f.getAttribute('autocomplete') ?? '' })),
+      // A select shows the words of what is chosen, not its value.
+      fields: fields.map((f) => ({
+        value: f.tagName === 'SELECT' ? (/** @type {HTMLSelectElement} */ (/** @type {unknown} */ (f)).selectedOptions[0]?.text ?? '') : f.value,
+        autocomplete: f.getAttribute('autocomplete') ?? '',
+      })),
     };
   }, clip);
   const matches = found.words.flatMap((words, i) => sensitiveIn(words).map((m) => ({ ...m, i })));
@@ -433,30 +437,35 @@ async function hiddenOn(p, clip, masks) {
       fields: fields.map((f, k) => (kinds[k] === null ? [] : [onPage(f.getBoundingClientRect())])),
     };
   }, { matches, kinds });
-  // An element named by two masks is one thing hidden, not two.
+  const shows = (r) =>
+    r.w > 0 && r.h > 0 && r.x < clip.x + clip.width && r.y < clip.y + clip.height && r.x + r.w > clip.x && r.y + r.h > clip.y;
+  // An element named by two masks is one thing hidden, not two. One with no box of its own (display: contents)
+  // shows only what is in it, so that is what is covered.
   const marked = new Map();
   const unmatched = [];
   for (const selector of masks) {
-    let boxes;
+    let elements;
     try {
-      boxes = await p.locator(selector).evaluateAll((els) =>
+      elements = await p.locator(selector).evaluateAll((els) =>
         els.map((el) => {
-          const r = el.getBoundingClientRect();
-          return { x: r.left + scrollX, y: r.top + scrollY, w: r.width, h: r.height };
+          const onPage = (r) => ({ x: r.left + scrollX, y: r.top + scrollY, w: r.width, h: r.height });
+          if (el.getClientRects().length > 0) return [onPage(el.getBoundingClientRect())];
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          return [...range.getClientRects()].map(onPage);
         }),
       );
     } catch {
       throw new UsageError(`Cannot read --mask ${selector} as a selector. Give one like .customer-name or [data-private].`);
     }
-    if (boxes.length === 0) unmatched.push(selector);
-    for (const b of boxes) marked.set(JSON.stringify(b), b);
+    // Found only where the picture does not reach, it hides nothing on it, and is said like one that found nothing.
+    if (!elements.some((rects) => rects.some(shows))) unmatched.push(selector);
+    for (const rects of elements) marked.set(JSON.stringify(rects), rects);
   }
-  const shows = (r) =>
-    r.w > 0 && r.h > 0 && r.x < clip.x + clip.width && r.y < clip.y + clip.height && r.x + r.w > clip.x && r.y + r.h > clip.y;
   const things = [
     ...matches.map((m, k) => ({ kind: m.kind, rects: at.words[k] })),
     ...kinds.map((kind, k) => ({ kind, rects: at.fields[k] })).filter((t) => t.kind !== null),
-    ...[...marked.values()].map((r) => ({ kind: 'marked', rects: [r] })),
+    ...[...marked.values()].map((rects) => ({ kind: 'marked', rects })),
   ]
     .map((t) => ({ ...t, rects: t.rects.filter(shows) }))
     .filter((t) => t.rects.length > 0);
@@ -535,9 +544,19 @@ async function picture(p, selector, file, noted = [], margin = 0) {
   const clip = margin === 0
     ? box
     : { x: Math.max(0, box.x - margin), y: Math.max(0, box.y - margin), width: box.width + 2 * margin, height: box.height + 2 * margin };
-  const taken = margin === 0 ? await part.screenshot() : await p.screenshot({ fullPage: true, clip });
   // What is private is covered before the picture is written, so it never reaches the disk, let alone a pull request.
-  const hidden = await hiddenOn(p, clip, masks);
+  // It is looked for just before the picture and just after, and both are covered: a page that moves or redraws
+  // something private while it is pictured (a poll, a ticker) shows it in one place or the other.
+  const was = await hiddenOn(p, clip, masks);
+  const taken = margin === 0 ? await part.screenshot() : await p.screenshot({ fullPage: true, clip });
+  const now = await hiddenOn(p, clip, masks);
+  const hidden = {
+    boxes: [...was.boxes, ...now.boxes],
+    counts: Object.fromEntries(
+      [...new Set([...Object.keys(was.counts), ...Object.keys(now.counts)])].map((k) => [k, Math.max(was.counts[k] ?? 0, now.counts[k] ?? 0)]),
+    ),
+    unmatched: was.unmatched.filter((m) => now.unmatched.includes(m)),
+  };
   writeFileSync(
     file,
     hidden.boxes.length === 0

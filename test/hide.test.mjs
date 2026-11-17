@@ -26,6 +26,15 @@ describe('sensitiveIn', () => {
     assert.deepEqual(kindsIn(`Card ${card.replaceAll(' ', '-')}`), [[card.replaceAll(' ', '-'), 'card']]);
     assert.deepEqual(kindsIn(`Card ${card.replaceAll(' ', '')}`), [[card.replaceAll(' ', ''), 'card']]);
   });
+  it('finds a card number laid out over lines, as page source sets it, one span to a group', () => {
+    const laid = card.replaceAll(' ', '\n      ');
+    assert.deepEqual(kindsIn(`Card\n      ${laid}\n    `), [[laid, 'card']]);
+  });
+  it('finds a card number or an IBAN with more after it, rather than giving up on the whole', () => {
+    assert.deepEqual(kindsIn(`Card ${card} 123 expires`), [[card, 'card']]);
+    assert.deepEqual(kindsIn('Pay BE68 5390 0754 7034 EUR'), [['BE68 5390 0754 7034', 'iban']]);
+    assert.deepEqual(kindsIn('Pay BE68539007547034 EUR'), [['BE68539007547034', 'iban']]);
+  });
   it('leaves prices, dates and short numbers alone', () => {
     assert.deepEqual(kindsIn('£1,299.00 on 2026-11-17, order 48213, phone ext 4242'), []);
   });
