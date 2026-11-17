@@ -4,6 +4,10 @@ SideShot runs on your machine and in your CI. With `--publish` or `--update-pr` 
 repository and edits a pull request's description. So a mistake in it could write where it should not, or
 put something private where everyone who can see the pull request can read it.
 
+SideShot covers what it can tell is private on every picture before it is written (what it finds, and what it
+cannot, is in [reference.md](skills/sideshot/reference.md#what-is-hidden)). A picture or a table that shows
+something SideShot says it hides, an email address, a card number, a key, is a vulnerability: report it below.
+
 ## Reporting a vulnerability
 
 Please report it privately, not in a public issue:

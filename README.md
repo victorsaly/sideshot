@@ -10,8 +10,8 @@
 
 <p align="center"><strong>A diff cannot show a UI change.</strong> Tell your coding agent to
 <em>sideshot this PR</em>. It works out which page and which parts your change touches, pictures them before and after
-on a desk and a phone (and in dark mode, if colours changed), rings and marks what changed, shows you first, then puts
-the side-by-side table in the pull request. Reviewers see the change on desk and phone without checking out the
+on a desk and a phone (and in dark mode, if colours changed), rings and marks what changed, covers what is private,
+shows you first, then puts the side-by-side table in the pull request. Reviewers see the change on desk and phone without checking out the
 branch.</p>
 
 <p align="center"><a href="https://skills.victorsaly.com/sideshot#film"><img src="docs/assets/film.jpg" alt="Watch SideShot in 36 seconds: a film of a pricing change pictured before and after, marked, and put in a pull request" width="720" /></a></p>
@@ -167,6 +167,8 @@ name or an address in plain text is not: picture nothing you would not put in th
 - **Before** is the site as it is: production, a preview deploy, or `main` run locally when the page sits behind a
   login.
 - **After** is your branch, running locally.
+- **What is private** (email addresses, card numbers, keys, filled form fields, and whatever `--mask` names) is
+  covered before a picture is written, so it never reaches your disk or the pull request.
 - **Live data.** When a page reads data only production can reach (an API behind a login, a database), a small
   `--setup` file gives both sides the same stand-in data, so only your change differs (below).
 
@@ -265,8 +267,8 @@ here:
 ```bash
 npm install && npx playwright install chromium
 npm test                # what it is asked, checked, the table it writes, and the skill's own files
-npm run test:coverage   # the same, with at least 90% of lib.mjs covered
-npm run test:e2e        # pictured for real in Chromium, what draw.mjs marks, and publishing to a local repo
+npm run test:coverage   # the same, with at least 90% of lib.mjs and hide.mjs covered
+npm run test:e2e        # pictured for real in Chromium, what draw.mjs marks, what is hidden, and publishing to a local repo
 npm run lint            # ESLint
 npm run typecheck       # TypeScript checks the JavaScript, nothing is built
 npm run check           # all of the above, as CI runs it on every pull request
