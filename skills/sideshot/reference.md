@@ -34,9 +34,29 @@ touch). In `.sideshot.json`, `devices` is a list, or a map of the project's name
 ## `.sideshot.json`
 
 These options, under their own names, at the project's root: `pr`, `before`, `after`, `page`, `devices`, `schemes`,
-`click`, `setup`, `wait`, `jobs`, `accent`, `markChanges: true`, `watermark: false`, `out`, `branch`, `olderThan`, and
+`click`, `setup`, `wait`, `jobs`, `accent`, `markChanges: true`, `watermark: false`, `mask`, `out`, `branch`, `olderThan`, and
 `remind: false`, which stops the Claude Code plugin reminding the agent after a push. Parts and notes are not kept
-there: they change with every pull request. A flag given on the command line wins over the file.
+there: they change with every pull request. A flag given on the command line wins over the file, but for `mask`,
+which `--mask` adds to.
+
+## What is hidden
+
+Every picture is looked over before it is kept, and what is private is covered with a solid grey box (not a blur,
+which can be read back), the same on before and after, so it is never marked as a change. It is looked for just
+before each picture and just after, and both places are covered, for a page that redraws while it is pictured:
+
+- **Found by its shape**: email addresses, card numbers (that pass the card check), IBANs (that pass theirs), and
+  keys and tokens shaped as their makers shape them: Stripe, GitHub, AWS, Slack, Google, OpenAI, Anthropic, JWTs,
+  and private key blocks.
+- **Filled form fields** (inputs, text areas and selects) whose `autocomplete` says they hold an email, a phone, a card, an address, a name, a
+  one-time code, a date of birth or a password.
+- **What the project marks**: any element with `data-sideshot-mask`, and every element a `--mask` selector finds
+  (or `"mask": [".customer-name"]` in `.sideshot.json`), each covered whole (one with no box of its own, as
+  `display: contents`, by what is in it). A `--mask` that finds nothing on any picture is said, since a typo would leave shown what it was to hide.
+
+In the words the table says changed, each is put as `[hidden]`. Not found: names, street addresses and notes in
+plain text, words in images, a `<canvas>` or a video, and what is inside an iframe. For a page full of real
+customers, stand-in data (above) is the sure way: what is not on the page cannot be pictured.
 
 ## What the pictures carry
 

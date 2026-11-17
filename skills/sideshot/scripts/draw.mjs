@@ -536,6 +536,21 @@ export async function strike({ src, boxes, colour }) {
   return btoa(bin);
 }
 
+/** Runs in the page: solid boxes over what is hidden ([left, top, right, bottom], in the picture's pixels), in the
+ * colour. Solid, not blurred: a blur or a mosaic of words can be read back, a solid box cannot. */
+export async function cover({ src, boxes, colour }) {
+  const img = await new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.src = src; });
+  const c = new OffscreenCanvas(img.width, img.height), x = c.getContext('2d');
+  x.drawImage(img, 0, 0);
+  x.fillStyle = colour;
+  for (const [l, t, r, btm] of boxes) x.fillRect(Math.floor(l), Math.floor(t), Math.ceil(r) - Math.floor(l), Math.ceil(btm) - Math.floor(t));
+  const blob = await c.convertToBlob({ type: 'image/png' });
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let bin = '';
+  for (let k = 0; k < bytes.length; k += 0x8000) bin += String.fromCharCode(...bytes.subarray(k, k + 0x8000));
+  return btoa(bin);
+}
+
 /** Runs in the page: one sheet of pairs, each before beside after, small, with what it is said above it. Made to
  * be looked over in one go, by a person or an agent, before anything is published; never published itself.
  * Something new, a row with no before, is laid across the whole sheet. */

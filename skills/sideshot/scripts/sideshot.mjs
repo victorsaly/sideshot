@@ -12,7 +12,8 @@
 // with the code that reads them, so an agent never has to read this file to run it.
 //
 // Needs Playwright: the project's own, or one installed globally for a project without Node of its own.
-/* global document, getComputedStyle, scrollX, scrollY -- only in the functions picture() hands to the page, which run there. */
+/* global document, getComputedStyle, scrollX, scrollY, window, Node, NodeFilter -- only in the functions picture() and
+   hiddenOn() hand to the page, which run there. */
 import { execFileSync } from 'node:child_process';
 import {
   cpSync,
@@ -28,7 +29,8 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { finish, pickAccent, sheet, strike } from './draw.mjs';
+import { cover, finish, pickAccent, sheet, strike } from './draw.mjs';
+import { fieldKindOf, hiddenIn, hiddenSaidOf, masksOf, sensitiveIn } from './hide.mjs';
 import {
   UsageError,
   bodyWith,
@@ -179,7 +181,7 @@ try {
         // No gh, no pull request yet, or more than one: optionsOf asks for one.
       }
     }
-    options = optionsOf(args, config);
+    options = { ...optionsOf(args, config), masks: masksOf(args, config) };
     if (options.publish) slug = publishingTo(options.branch);
   }
 } catch (error) {
@@ -216,7 +218,7 @@ if (pruning) {
 }
 const {
   pr, page, before, after, wait, jobs, click, branch, setupPath, chosen, schemes, parts, notes, accent,
-  markChanges, watermark, publish, updatePr, reuse, onlyNew,
+  markChanges, watermark, publish, updatePr, reuse, onlyNew, masks,
 } = options;
 // The sides pictured: something new has only after.
 const sides = onlyNew ? [['after', after]] : [['before', before], ['after', after]];
@@ -341,6 +343,141 @@ const below = 80;
 // 23 px out, and 28 keeps all of it in the picture.
 const ringRoom = 28;
 
+/** fn run in a page of its own, blank, so pictures are finished side by side too, and no page's own rules (its
+ * content security policy) stand in the way. */
+const inPage = async (fn, arg) => {
+  const p = await browser.newPage();
+  try {
+    return await p.evaluate(fn, arg);
+  } finally {
+    await p.close();
+  }
+};
+
+// What is hidden is covered in one colour, a slate grey that reads as covered on a light page and a dark one.
+const coverColour = '#4b5563';
+// The pictures are taken at twice the page's pixels, so they stay sharp on a reviewer's screen.
+const scale = 2;
+
+/** What is private in the picture's area of the page (clip, in the page's CSS pixels), found as it shows: the words
+ * sensitiveIn finds, the filled fields fieldKindOf says are private, and every element of the masks. Returns how
+ * many of each kind, the boxes that cover them (in the picture's pixels), and the masks that found nothing. */
+async function hiddenOn(p, clip, masks) {
+  // The words as each block of the page lays them out, open shadow roots too: a card number set in a span for each
+  // group of four is one run of words there, not four. Held by the page for the second look.
+  const found = await p.evaluate((c) => {
+    const inside = (r) =>
+      r.width > 0 && r.height > 0 && r.right + scrollX > c.x && r.left + scrollX < c.x + c.width &&
+      r.bottom + scrollY > c.y && r.top + scrollY < c.y + c.height;
+    const isBlock = new Map();
+    const blockOf = (el) => {
+      for (let e = el; e; e = e.parentElement) {
+        if (!isBlock.has(e)) isBlock.set(e, !/^(?:inline|contents)$/.test(getComputedStyle(e).display));
+        if (isBlock.get(e)) return e;
+      }
+      return null;
+    };
+    const runs = [], fields = [];
+    const roots = /** @type {Node[]} */ ([document.body]);
+    while (roots.length > 0) {
+      const walker = document.createTreeWalker(/** @type {Node} */ (roots.pop()), NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+      let run = null;
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        if (n.nodeType === Node.TEXT_NODE) {
+          const parent = n.parentElement;
+          if (!parent || /^(?:SCRIPT|STYLE|NOSCRIPT|TEMPLATE|TEXTAREA)$/.test(parent.tagName)) continue;
+          const text = /** @type {Text} */ (n);
+          const block = blockOf(parent);
+          if (run === null || run.block !== block) runs.push((run = { block, nodes: [], starts: [], words: '', shows: false }));
+          run.nodes.push(text);
+          run.starts.push(run.words.length);
+          run.words += text.data;
+          if (!run.shows && text.data.trim() !== '') {
+            const range = document.createRange();
+            range.selectNodeContents(text);
+            run.shows = inside(range.getBoundingClientRect());
+          }
+          continue;
+        }
+        const el = /** @type {HTMLInputElement} */ (n);
+        if (el.shadowRoot) roots.push(el.shadowRoot);
+        if (/^(?:INPUT|TEXTAREA|SELECT)$/.test(el.tagName) && inside(el.getBoundingClientRect())) fields.push(el);
+      }
+    }
+    const shown = runs.filter((r) => r.shows);
+    /** @type {any} */ (window).sideshotFound = { runs: shown, fields };
+    return {
+      words: shown.map((r) => r.words),
+      // A select shows the words of what is chosen, not its value.
+      fields: fields.map((f) => ({
+        value: f.tagName === 'SELECT' ? (/** @type {HTMLSelectElement} */ (/** @type {unknown} */ (f)).selectedOptions[0]?.text ?? '') : f.value,
+        autocomplete: f.getAttribute('autocomplete') ?? '',
+      })),
+    };
+  }, clip);
+  const matches = found.words.flatMap((words, i) => sensitiveIn(words).map((m) => ({ ...m, i })));
+  const kinds = found.fields.map(fieldKindOf);
+  const at = await p.evaluate(({ matches, kinds }) => {
+    const { runs, fields } = /** @type {any} */ (window).sideshotFound;
+    const onPage = (r) => ({ x: r.left + scrollX, y: r.top + scrollY, w: r.width, h: r.height });
+    // Where in its run's texts a place in the run's words is: the last text that starts at or before it.
+    /** @returns {[Node, number]} */
+    const pointOf = (run, place) => {
+      let k = run.starts.length - 1;
+      while (k > 0 && run.starts[k] > place) k--;
+      return [run.nodes[k], Math.min(place - run.starts[k], run.nodes[k].data.length)];
+    };
+    return {
+      words: matches.map(({ i, start, end }) => {
+        const range = document.createRange();
+        range.setStart(...pointOf(runs[i], start));
+        range.setEnd(...pointOf(runs[i], end));
+        return [...range.getClientRects()].map(onPage);
+      }),
+      fields: fields.map((f, k) => (kinds[k] === null ? [] : [onPage(f.getBoundingClientRect())])),
+    };
+  }, { matches, kinds });
+  const shows = (r) =>
+    r.w > 0 && r.h > 0 && r.x < clip.x + clip.width && r.y < clip.y + clip.height && r.x + r.w > clip.x && r.y + r.h > clip.y;
+  // An element named by two masks is one thing hidden, not two. One with no box of its own (display: contents)
+  // shows only what is in it, so that is what is covered.
+  const marked = new Map();
+  const unmatched = [];
+  for (const selector of masks) {
+    let elements;
+    try {
+      elements = await p.locator(selector).evaluateAll((els) =>
+        els.map((el) => {
+          const onPage = (r) => ({ x: r.left + scrollX, y: r.top + scrollY, w: r.width, h: r.height });
+          if (el.getClientRects().length > 0) return [onPage(el.getBoundingClientRect())];
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          return [...range.getClientRects()].map(onPage);
+        }),
+      );
+    } catch {
+      throw new UsageError(`Cannot read --mask ${selector} as a selector. Give one like .customer-name or [data-private].`);
+    }
+    // Found only where the picture does not reach, it hides nothing on it, and is said like one that found nothing.
+    if (!elements.some((rects) => rects.some(shows))) unmatched.push(selector);
+    for (const rects of elements) marked.set(JSON.stringify(rects), rects);
+  }
+  const things = [
+    ...matches.map((m, k) => ({ kind: m.kind, rects: at.words[k] })),
+    ...kinds.map((kind, k) => ({ kind, rects: at.fields[k] })).filter((t) => t.kind !== null),
+    ...[...marked.values()].map((rects) => ({ kind: 'marked', rects })),
+  ]
+    .map((t) => ({ ...t, rects: t.rects.filter(shows) }))
+    .filter((t) => t.rects.length > 0);
+  const counts = {};
+  for (const t of things) counts[t.kind] = (counts[t.kind] ?? 0) + 1;
+  // A pixel past each edge, for a page laid out at fractions of one.
+  const boxes = things.flatMap((t) =>
+    t.rects.map((r) => [r.x - clip.x - 1, r.y - clip.y - 1, r.x - clip.x + r.w + 1, r.y - clip.y + r.h + 1].map((v) => v * scale)),
+  );
+  return { counts, boxes, unmatched };
+}
+
 /** Opens what the part sits in, lets it settle, and pictures it. Returns where each noted element sits in the
  * picture, in CSS pixels, and the part's words as the page shows them, or null when the page has no such part. */
 async function picture(p, selector, file, noted = [], margin = 0) {
@@ -398,25 +535,34 @@ async function picture(p, selector, file, noted = [], margin = 0) {
     ]).then(() => undefined),
     waits.images,
   );
-  // The part's words, for the table to say which changed: a mark cannot name a word.
-  const text = await part.evaluate((el) => /** @type {HTMLElement} */ (el).innerText).catch(() => '');
-  if (margin === 0) {
-    await part.screenshot({ path: file });
-    return { rings: [], text };
-  }
   // A ring sits just outside what it marks: with notes, both pictures take the same margin, so no ring or
   // number is cut off and before and after stay the same size.
   const box = await part.evaluate((el) => {
     const r = el.getBoundingClientRect();
     return { x: r.left + scrollX, y: r.top + scrollY, width: r.width, height: r.height };
   });
-  const clip = {
-    x: Math.max(0, box.x - margin),
-    y: Math.max(0, box.y - margin),
-    width: box.width + 2 * margin,
-    height: box.height + 2 * margin,
+  const clip = margin === 0
+    ? box
+    : { x: Math.max(0, box.x - margin), y: Math.max(0, box.y - margin), width: box.width + 2 * margin, height: box.height + 2 * margin };
+  // What is private is covered before the picture is written, so it never reaches the disk, let alone a pull request.
+  // It is looked for just before the picture and just after, and both are covered: a page that moves or redraws
+  // something private while it is pictured (a poll, a ticker) shows it in one place or the other.
+  const was = await hiddenOn(p, clip, masks);
+  const taken = margin === 0 ? await part.screenshot() : await p.screenshot({ fullPage: true, clip });
+  const now = await hiddenOn(p, clip, masks);
+  const hidden = {
+    boxes: [...was.boxes, ...now.boxes],
+    counts: Object.fromEntries(
+      [...new Set([...Object.keys(was.counts), ...Object.keys(now.counts)])].map((k) => [k, Math.max(was.counts[k] ?? 0, now.counts[k] ?? 0)]),
+    ),
+    unmatched: was.unmatched.filter((m) => now.unmatched.includes(m)),
   };
-  await p.screenshot({ path: file, fullPage: true, clip });
+  writeFileSync(
+    file,
+    hidden.boxes.length === 0
+      ? taken
+      : Buffer.from(await inPage(cover, { src: `data:image/png;base64,${taken.toString('base64')}`, boxes: hidden.boxes, colour: coverColour }), 'base64'),
+  );
   // The rings are drawn on the picture afterwards, in the one colour chosen for the whole set; here they are
   // only measured, each found by its own locator, like the part.
   const rings = [];
@@ -429,7 +575,14 @@ async function picture(p, selector, file, noted = [], margin = 0) {
     });
     rings.push({ n: note.n, x: r.x - clip.x, y: r.y - clip.y, w: r.w, h: r.h });
   }
-  return { rings: ringsWithin(rings, clip.width, clip.height), text };
+  // The part's words, for the table to say which changed: a mark cannot name a word. Hidden there as on the
+  // picture: what is marked to hide says [hidden] (the page is closed after this), and so does what the words show.
+  for (const selector of masks)
+    await p.locator(selector).evaluateAll((els) => {
+      for (const el of els) el.textContent = '[hidden]';
+    });
+  const text = hiddenIn(await part.evaluate((el) => /** @type {HTMLElement} */ (el).innerText).catch(() => ''));
+  return { rings: ringsWithin(rings, clip.width, clip.height), text, hidden: hidden.counts, unmatched: hidden.unmatched };
 }
 
 let browser;
@@ -447,7 +600,7 @@ try {
 async function shoot({ device, scheme, when, base, part }) {
   const context = await browser.newContext({
     ...device.options,
-    deviceScaleFactor: 2,
+    deviceScaleFactor: scale,
     colorScheme: scheme,
   });
   try {
@@ -489,6 +642,8 @@ async function shoot({ device, scheme, when, base, part }) {
       name,
       rings: shot === null ? null : shot.rings,
       text: shot === null ? null : shot.text,
+      hidden: shot === null ? {} : shot.hidden,
+      unmatched: shot === null ? null : shot.unmatched,
       pressed,
       when,
       said: `${part.name} ${when} on ${label(device.name, scheme)}`,
@@ -514,7 +669,10 @@ try {
   taken = await pool(shots, jobs, shoot);
 } catch (error) {
   await browser.close();
-  throw error;
+  // A --mask that is not a selector is said in a line: nothing was kept, since it could not be hidden.
+  if (!(error instanceof UsageError)) throw error;
+  console.error(error.message);
+  process.exit(1);
 }
 
 // A pair the same before and after, pixel for pixel, shows a reviewer nothing: it is not kept, and it is said.
@@ -563,7 +721,16 @@ const fresh = new Set(
 // Nothing of it before, found rather than said with --new, which would not have opened before at all.
 // Every part looked for before, not only those kept: one left out for being the same was there.
 const foundNew = !onlyNew && pngs.length > 0 && taken.every((t) => t.when !== 'before' || t.rings === null);
+// The most of each kind hidden on any one picture: before and after show the same page, so most are on both.
+const hid = {};
+for (const t of taken) for (const [kind, n] of Object.entries(t.hidden)) hid[kind] = Math.max(hid[kind] ?? 0, n);
+// A --mask that found nothing on any picture is likely a typo, and what it was to hide may show: said, every time.
+// What the page marks with data-sideshot-mask is looked for always, and is most often not there.
+const nowhere = masks.slice(1).filter((m) => taken.every((t) => t.unmatched === null || t.unmatched.includes(m)));
 const sayGaps = () => {
+  const said = hiddenSaidOf(hid);
+  if (said !== null) console.info(said);
+  for (const m of nowhere) console.info(`--mask ${m} found nothing on any picture: check the selector.`);
   if (missing.length > 0) console.info(`Not on the page${onlyNew ? '' : ' (new or removed)'}: ${missing.join('; ')}`);
   if (foundNew)
     console.info('None of it is on before, so it is shown as new, with nothing drawn on it. --new does that sooner, without opening before.');
@@ -588,15 +755,6 @@ try {
   // Each picture is finished in a browser canvas: what changed is marked, the notes are ringed, the tag goes in
   // the corner. A picture drawn on keeps a plain copy beside it.
   const dataOf = (name) => `data:image/png;base64,${readFileSync(join(out, name)).toString('base64')}`;
-  /** fn run in a page of its own, so pictures are finished side by side too. */
-  const inPage = async (fn, arg) => {
-    const p = await browser.newPage();
-    try {
-      return await p.evaluate(fn, arg);
-    } finally {
-      await p.close();
-    }
-  };
   const marking = (markChanges && pngs.some((f) => !fresh.has(f))) || ringsOf.size > 0;
   let colour = accent === 'auto' ? null : accent;
   if (colour === null)
@@ -619,7 +777,7 @@ try {
       before: compare ? dataOf(pair) : null,
       rings,
       colour,
-      scale: 2,
+      scale,
       tag,
     });
     if (rings.length > 0 || result.changed > 0) cpSync(join(out, f), join(out, plainOf(f)));

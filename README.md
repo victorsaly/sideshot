@@ -28,7 +28,7 @@ branch.</p>
 
 <p align="center">
   <a href="https://skills.sh"><img src="https://img.shields.io/badge/Agent_Skill-Claude_Code_%C2%B7_Codex_%C2%B7_Cursor_%C2%B7_OpenCode-000000?style=flat-square" alt="An Agent Skill, for Claude Code, Codex, Cursor and OpenCode" /></a>
-  <img src="https://img.shields.io/badge/version-0.7.1-000000?style=flat-square" alt="Version 0.7.1" />
+  <img src="https://img.shields.io/badge/version-0.8.0-000000?style=flat-square" alt="Version 0.8.0" />
   <a href="https://github.com/victorsaly/sideshot/actions/workflows/check.yml"><img src="https://img.shields.io/github/actions/workflow/status/victorsaly/sideshot/check.yml?branch=main&style=flat-square&label=check&color=000000" alt="Checks on main" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-000000?style=flat-square" alt="MIT licence" /></a>
 </p>
@@ -121,6 +121,9 @@ Add `--note` and `--mark-changes` and the picture says what changed: a numbered 
 - **Something new, shown as it is.** A part that was not there before is shown on its own, with nothing drawn on
   it, and when all of it is new the description says *What's new*. `--new` does the same sooner, never opening a
   "before" site at all.
+- **What is private stays out of the pictures.** Email addresses, card numbers, IBANs, keys and tokens, and
+  filled fields holding a phone, an address or a name are covered with a solid box before a picture is kept, and
+  the run says how many. `--mask` (or `data-sideshot-mask` in the page) hides anything else, whole.
 - **Nothing to compare, said plainly.** A pair the same before and after is left out, and named under the table.
   When nothing is left, nothing is pushed, and the description says why.
 
@@ -147,8 +150,8 @@ Add `--note` and `--mark-changes` and the picture says what changed: a numbered 
 
 Anyone who can read the repository can see the pictures, so **on a public repository they are public**; on a private
 one, only those who can read it see them, in the table as well. They stay on the `sideshot` branch until `--prune`
-takes them off. Picture nothing you would not put in the pull request
-yourself. SideShot sends nothing anywhere else, and costs nothing; your agent's own use is all you pay for.
+takes them off. What SideShot can tell is private is covered on every picture ([what is hidden](skills/sideshot/reference.md#what-is-hidden)), but a
+name or an address in plain text is not: picture nothing you would not put in the pull request yourself. SideShot sends nothing anywhere else, and costs nothing; your agent's own use is all you pay for.
 
 <a id="how-it-works"></a>
 
@@ -195,6 +198,7 @@ node skills/sideshot/scripts/sideshot.mjs --pr 123 --page /pricing --part plans=
 | `--mark-changes` | off | Outlines what was added or changed; a dashed rule where something was taken out. |
 | `--accent colour` | `auto` | The marking colour: `auto` (marigold, unless the page is close to it), `marigold`, `magenta`, `cyan`, `violet`, `lime`, or `#hex`. |
 | `--no-watermark` | | Leaves off the small SideShot tag in the corner of each "after" picture. |
+| `--mask "selector"` | | Covers every element it finds, whole, on every picture; repeat for more. Email addresses, card numbers, IBANs, keys and tokens, private form fields and `data-sideshot-mask` are covered without it. |
 | `--setup ./file.mjs` | | Runs on each page before it opens: stand-in data, a cookie, a login. |
 | `--wait ms` | `1500` | How long, in milliseconds, a part is given to settle once it is in view, before it is pictured. |
 | `--jobs N` | `4` | How many pictures are taken at once. |
@@ -207,7 +211,7 @@ node skills/sideshot/scripts/sideshot.mjs --pr 123 --page /pricing --part plans=
 | `--older-than days` | `30` | With `--prune`: how long ago. |
 
 Every option but `--part`, `--note`, `--new`, `--publish`, `--update-pr`, `--reuse` and `--prune` can also live in
-`.sideshot.json`, under its own name (`markChanges: true`, `watermark: false`, `olderThan`). `--help` lists everything.
+`.sideshot.json`, under its own name (`markChanges: true`, `watermark: false`, `mask`, `olderThan`). `--help` lists everything.
 
 A `--setup` file, for a page whose data only production can reach:
 
