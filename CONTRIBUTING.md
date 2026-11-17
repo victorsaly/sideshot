@@ -27,7 +27,7 @@ agents.
 ## Making a change
 
 1. **A test first.** A bug gets a test that fails without the fix. Something new gets tests for what it does,
-   and `lib.mjs` stays at least 90% covered.
+   and `lib.mjs` and `hide.mjs` stay at least 90% covered.
 2. **`npm run check` passes** before you push.
 3. **The skill, when you change what it says.** A change to `SKILL.md` or `reference.md` is a change to how
    agents behave, so run the evals (`claude plugin eval .`, Claude Code 2.1.269 or later): they run real sessions

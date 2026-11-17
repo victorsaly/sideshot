@@ -9,12 +9,17 @@ For coding agents changing this repository. People: [CONTRIBUTING.md](CONTRIBUTI
 - `skills/sideshot/scripts/sideshot.mjs`: the command. It opens the browser, runs git and gh, writes files.
 - `skills/sideshot/scripts/lib.mjs`: everything that can be worked out without a browser or git: reading the
   options, `--help`'s words, the table, what to prune. Pure functions, at least 90% covered by `test/lib.test.mjs`.
+- `skills/sideshot/scripts/hide.mjs`: what is private, found in words and form fields (email addresses, card
+  numbers, keys, fields whose autocomplete says what they hold), and the `--mask` selectors. Pure, at least 90%
+  covered by `test/hide.test.mjs`; sideshot.mjs finds where each shows on the page and covers it before the
+  picture is written.
 - `skills/sideshot/scripts/hook.mjs` and `hooks/hooks.json`: the Claude Code plugin's reminder after a push. What
   it decides on is `reminderOf`, in lib.mjs; the script only asks git and gh, and never fails the command.
 - `skills/sideshot/scripts/draw.mjs`: handed to the page as source and run there, so browser globals, not Node's.
 - `test/skill.test.mjs`: the skill's own files as an agent reads them (SKILL.md's limits, its links), the eval cases
   as the runner reads them, the install lines in the docs, and one version everywhere.
-- `test/e2e/`: pictured for real in Chromium, and publishing to a local bare repository, never to GitHub.
+- `test/e2e/`: pictured for real in Chromium, what is private covered on the pictures (read pixel by pixel), and
+  publishing to a local bare repository, never to GitHub.
 - `evals/`: whether agents use the skill as SKILL.md says, run with `claude plugin eval .`. Not in CI: each run is
   a real session, paid for. What each case checks, and how to add one: [evals/README.md](evals/README.md).
 

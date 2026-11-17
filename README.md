@@ -10,8 +10,8 @@
 
 <p align="center"><strong>A diff cannot show a UI change.</strong> Tell your coding agent to
 <em>sideshot this PR</em>. It works out which page and which parts your change touches, pictures them before and after
-on a desk and a phone (and in dark mode, if colours changed), rings and marks what changed, shows you first, then puts
-the side-by-side table in the pull request. Reviewers see the change on desk and phone without checking out the
+on a desk and a phone (and in dark mode, if colours changed), rings and marks what changed, covers what is private,
+shows you first, then puts the side-by-side table in the pull request. Reviewers see the change on desk and phone without checking out the
 branch.</p>
 
 <p align="center"><a href="https://skills.victorsaly.com/sideshot#film"><img src="docs/assets/film.jpg" alt="Watch SideShot in 36 seconds: a film of a pricing change pictured before and after, marked, and put in a pull request" width="720" /></a></p>
@@ -122,7 +122,8 @@ Add `--note` and `--mark-changes` and the picture says what changed: a numbered 
   it, and when all of it is new the description says *What's new*. `--new` does the same sooner, never opening a
   "before" site at all.
 - **What is private stays out of the pictures.** Email addresses, card numbers, IBANs, keys and tokens, and
-  filled fields holding a phone, an address or a name are covered with a solid box before a picture is kept, and
+  form fields whose `autocomplete` says they hold a phone, an address or a name are covered with a solid box
+  before a picture is kept, and
   the run says how many. `--mask` (or `data-sideshot-mask` in the page) hides anything else, whole.
 - **Nothing to compare, said plainly.** A pair the same before and after is left out, and named under the table.
   When nothing is left, nothing is pushed, and the description says why.
@@ -167,6 +168,9 @@ name or an address in plain text is not: picture nothing you would not put in th
 - **Before** is the site as it is: production, a preview deploy, or `main` run locally when the page sits behind a
   login.
 - **After** is your branch, running locally.
+- **What is private** (email addresses, card numbers, keys, form fields whose `autocomplete` says they hold a
+  phone, an address or a name, and whatever `--mask` names) is covered before a picture is written, so it never
+  reaches your disk or the pull request. A field that says nothing of what it holds is covered only by `--mask`.
 - **Live data.** When a page reads data only production can reach (an API behind a login, a database), a small
   `--setup` file gives both sides the same stand-in data, so only your change differs (below).
 
@@ -198,7 +202,7 @@ node skills/sideshot/scripts/sideshot.mjs --pr 123 --page /pricing --part plans=
 | `--mark-changes` | off | Outlines what was added or changed; a dashed rule where something was taken out. |
 | `--accent colour` | `auto` | The marking colour: `auto` (marigold, unless the page is close to it), `marigold`, `magenta`, `cyan`, `violet`, `lime`, or `#hex`. |
 | `--no-watermark` | | Leaves off the small SideShot tag in the corner of each "after" picture. |
-| `--mask "selector"` | | Covers every element it finds, whole, on every picture; repeat for more. Email addresses, card numbers, IBANs, keys and tokens, private form fields and `data-sideshot-mask` are covered without it. |
+| `--mask "selector"` | | Covers every element it finds, whole, on every picture; repeat for more. Email addresses, card numbers, IBANs, keys and tokens, form fields whose `autocomplete` names what they hold, and `data-sideshot-mask` are covered without it. |
 | `--setup ./file.mjs` | | Runs on each page before it opens: stand-in data, a cookie, a login. |
 | `--wait ms` | `1500` | How long, in milliseconds, a part is given to settle once it is in view, before it is pictured. |
 | `--jobs N` | `4` | How many pictures are taken at once. |
@@ -265,8 +269,8 @@ here:
 ```bash
 npm install && npx playwright install chromium
 npm test                # what it is asked, checked, the table it writes, and the skill's own files
-npm run test:coverage   # the same, with at least 90% of lib.mjs covered
-npm run test:e2e        # pictured for real in Chromium, what draw.mjs marks, and publishing to a local repo
+npm run test:coverage   # the same, with at least 90% of lib.mjs and hide.mjs covered
+npm run test:e2e        # pictured for real in Chromium, what draw.mjs marks, what is hidden, and publishing to a local repo
 npm run lint            # ESLint
 npm run typecheck       # TypeScript checks the JavaScript, nothing is built
 npm run check           # all of the above, as CI runs it on every pull request
