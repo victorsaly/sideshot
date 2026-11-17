@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.8.0 (unreleased)
+## 0.8.0 (2026-11-17)
 
 - **What is private is covered on every picture, before it is kept.** Email addresses, card numbers, IBANs, keys
   and tokens (Stripe, GitHub, AWS, Slack, Google, OpenAI, Anthropic, JWTs, private keys), and filled form fields
