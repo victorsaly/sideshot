@@ -9,7 +9,7 @@
   Nothing private is written to disk on the way: the picture is covered before it is saved. The run says how many
   of each it hid.
 - **`--mask "selector"`**, repeated or as `"mask"` in `.sideshot.json`, and `data-sideshot-mask` in the page,
-  hide anything else, whole: a customer's name, an account number.
+  hide anything else, whole: a customer's name, an account number. One that finds nothing on any picture is said.
 
 ## 0.7.1 (2026-11-01)
 

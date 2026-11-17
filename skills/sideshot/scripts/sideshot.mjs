@@ -361,23 +361,42 @@ const scale = 2;
 
 /** What is private in the picture's area of the page (clip, in the page's CSS pixels), found as it shows: the words
  * sensitiveIn finds, the filled fields fieldKindOf says are private, and every element of the masks. Returns how
- * many of each kind, and the boxes that cover them, in the picture's pixels. */
+ * many of each kind, the boxes that cover them (in the picture's pixels), and the masks that found nothing. */
 async function hiddenOn(p, clip, masks) {
-  // Every text and form field the picture shows, open shadow roots too; held by the page for the second look.
+  // The words as each block of the page lays them out, open shadow roots too: a card number set in a span for each
+  // group of four is one run of words there, not four. Held by the page for the second look.
   const found = await p.evaluate((c) => {
     const inside = (r) =>
       r.width > 0 && r.height > 0 && r.right + scrollX > c.x && r.left + scrollX < c.x + c.width &&
       r.bottom + scrollY > c.y && r.top + scrollY < c.y + c.height;
-    const texts = [], fields = [];
+    const isBlock = new Map();
+    const blockOf = (el) => {
+      for (let e = el; e; e = e.parentElement) {
+        if (!isBlock.has(e)) isBlock.set(e, !/^(?:inline|contents)$/.test(getComputedStyle(e).display));
+        if (isBlock.get(e)) return e;
+      }
+      return null;
+    };
+    const runs = [], fields = [];
     const roots = /** @type {Node[]} */ ([document.body]);
     while (roots.length > 0) {
       const walker = document.createTreeWalker(/** @type {Node} */ (roots.pop()), NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+      let run = null;
       for (let n = walker.nextNode(); n; n = walker.nextNode()) {
         if (n.nodeType === Node.TEXT_NODE) {
-          if (/^(?:SCRIPT|STYLE|NOSCRIPT|TEMPLATE|TEXTAREA)$/.test(n.parentElement?.tagName ?? '') || /** @type {Text} */ (n).data.trim() === '') continue;
-          const range = document.createRange();
-          range.selectNodeContents(n);
-          if (inside(range.getBoundingClientRect())) texts.push(n);
+          const parent = n.parentElement;
+          if (!parent || /^(?:SCRIPT|STYLE|NOSCRIPT|TEMPLATE|TEXTAREA)$/.test(parent.tagName)) continue;
+          const text = /** @type {Text} */ (n);
+          const block = blockOf(parent);
+          if (run === null || run.block !== block) runs.push((run = { block, nodes: [], starts: [], words: '', shows: false }));
+          run.nodes.push(text);
+          run.starts.push(run.words.length);
+          run.words += text.data;
+          if (!run.shows && text.data.trim() !== '') {
+            const range = document.createRange();
+            range.selectNodeContents(text);
+            run.shows = inside(range.getBoundingClientRect());
+          }
           continue;
         }
         const el = /** @type {HTMLInputElement} */ (n);
@@ -385,22 +404,30 @@ async function hiddenOn(p, clip, masks) {
         if ((el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') && inside(el.getBoundingClientRect())) fields.push(el);
       }
     }
-    /** @type {any} */ (window).sideshotFound = { texts, fields };
+    const shown = runs.filter((r) => r.shows);
+    /** @type {any} */ (window).sideshotFound = { runs: shown, fields };
     return {
-      words: texts.map((t) => /** @type {Text} */ (t).data),
+      words: shown.map((r) => r.words),
       fields: fields.map((f) => ({ value: f.value, autocomplete: f.getAttribute('autocomplete') ?? '' })),
     };
   }, clip);
   const matches = found.words.flatMap((words, i) => sensitiveIn(words).map((m) => ({ ...m, i })));
   const kinds = found.fields.map(fieldKindOf);
   const at = await p.evaluate(({ matches, kinds }) => {
-    const { texts, fields } = /** @type {any} */ (window).sideshotFound;
+    const { runs, fields } = /** @type {any} */ (window).sideshotFound;
     const onPage = (r) => ({ x: r.left + scrollX, y: r.top + scrollY, w: r.width, h: r.height });
+    // Where in its run's texts a place in the run's words is: the last text that starts at or before it.
+    /** @returns {[Node, number]} */
+    const pointOf = (run, place) => {
+      let k = run.starts.length - 1;
+      while (k > 0 && run.starts[k] > place) k--;
+      return [run.nodes[k], Math.min(place - run.starts[k], run.nodes[k].data.length)];
+    };
     return {
       words: matches.map(({ i, start, end }) => {
         const range = document.createRange();
-        range.setStart(texts[i], start);
-        range.setEnd(texts[i], end);
+        range.setStart(...pointOf(runs[i], start));
+        range.setEnd(...pointOf(runs[i], end));
         return [...range.getClientRects()].map(onPage);
       }),
       fields: fields.map((f, k) => (kinds[k] === null ? [] : [onPage(f.getBoundingClientRect())])),
@@ -408,13 +435,20 @@ async function hiddenOn(p, clip, masks) {
   }, { matches, kinds });
   // An element named by two masks is one thing hidden, not two.
   const marked = new Map();
+  const unmatched = [];
   for (const selector of masks) {
-    const boxes = await p.locator(selector).evaluateAll((els) =>
-      els.map((el) => {
-        const r = el.getBoundingClientRect();
-        return { x: r.left + scrollX, y: r.top + scrollY, w: r.width, h: r.height };
-      }),
-    );
+    let boxes;
+    try {
+      boxes = await p.locator(selector).evaluateAll((els) =>
+        els.map((el) => {
+          const r = el.getBoundingClientRect();
+          return { x: r.left + scrollX, y: r.top + scrollY, w: r.width, h: r.height };
+        }),
+      );
+    } catch {
+      throw new UsageError(`Cannot read --mask ${selector} as a selector. Give one like .customer-name or [data-private].`);
+    }
+    if (boxes.length === 0) unmatched.push(selector);
     for (const b of boxes) marked.set(JSON.stringify(b), b);
   }
   const shows = (r) =>
@@ -432,7 +466,7 @@ async function hiddenOn(p, clip, masks) {
   const boxes = things.flatMap((t) =>
     t.rects.map((r) => [r.x - clip.x - 1, r.y - clip.y - 1, r.x - clip.x + r.w + 1, r.y - clip.y + r.h + 1].map((v) => v * scale)),
   );
-  return { counts, boxes };
+  return { counts, boxes, unmatched };
 }
 
 /** Opens what the part sits in, lets it settle, and pictures it. Returns where each noted element sits in the
@@ -529,7 +563,7 @@ async function picture(p, selector, file, noted = [], margin = 0) {
       for (const el of els) el.textContent = '[hidden]';
     });
   const text = hiddenIn(await part.evaluate((el) => /** @type {HTMLElement} */ (el).innerText).catch(() => ''));
-  return { rings: ringsWithin(rings, clip.width, clip.height), text, hidden: hidden.counts };
+  return { rings: ringsWithin(rings, clip.width, clip.height), text, hidden: hidden.counts, unmatched: hidden.unmatched };
 }
 
 let browser;
@@ -590,6 +624,7 @@ async function shoot({ device, scheme, when, base, part }) {
       rings: shot === null ? null : shot.rings,
       text: shot === null ? null : shot.text,
       hidden: shot === null ? {} : shot.hidden,
+      unmatched: shot === null ? null : shot.unmatched,
       pressed,
       when,
       said: `${part.name} ${when} on ${label(device.name, scheme)}`,
@@ -615,7 +650,10 @@ try {
   taken = await pool(shots, jobs, shoot);
 } catch (error) {
   await browser.close();
-  throw error;
+  // A --mask that is not a selector is said in a line: nothing was kept, since it could not be hidden.
+  if (!(error instanceof UsageError)) throw error;
+  console.error(error.message);
+  process.exit(1);
 }
 
 // A pair the same before and after, pixel for pixel, shows a reviewer nothing: it is not kept, and it is said.
@@ -667,9 +705,13 @@ const foundNew = !onlyNew && pngs.length > 0 && taken.every((t) => t.when !== 'b
 // The most of each kind hidden on any one picture: before and after show the same page, so most are on both.
 const hid = {};
 for (const t of taken) for (const [kind, n] of Object.entries(t.hidden)) hid[kind] = Math.max(hid[kind] ?? 0, n);
+// A --mask that found nothing on any picture is likely a typo, and what it was to hide may show: said, every time.
+// What the page marks with data-sideshot-mask is looked for always, and is most often not there.
+const nowhere = masks.slice(1).filter((m) => taken.every((t) => t.unmatched === null || t.unmatched.includes(m)));
 const sayGaps = () => {
   const said = hiddenSaidOf(hid);
   if (said !== null) console.info(said);
+  for (const m of nowhere) console.info(`--mask ${m} found nothing on any picture: check the selector.`);
   if (missing.length > 0) console.info(`Not on the page${onlyNew ? '' : ' (new or removed)'}: ${missing.join('; ')}`);
   if (foundNew)
     console.info('None of it is on before, so it is shown as new, with nothing drawn on it. --new does that sooner, without opening before.');

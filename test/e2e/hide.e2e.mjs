@@ -11,6 +11,8 @@ import { addressOf, run, serve } from './helpers.mjs';
 
 // Put together here, not written out, so a secret scanner does not take it for a real one.
 const card = Array(4).fill('4242').join(' ');
+// As a page often shows one, each group in an element of its own, so no one text holds it whole.
+const cardInSpans = Array(4).fill('<span>4242</span>').join(' ');
 
 /** A card with something at each place: left and top in CSS pixels, inside the card. */
 const pageOf = (contact) => `<!doctype html><meta charset="utf-8">
@@ -25,7 +27,7 @@ const pageOf = (contact) => `<!doctype html><meta charset="utf-8">
   <input style="top: 100px; width: 260px; height: 24px" autocomplete="tel" value="+44 20 7946 0000">
   <p style="top: 150px" data-sideshot-mask>Account 12</p>
   <p style="top: 190px" class="vip">Jane Doe</p>
-  <p style="top: 225px">Card ${card}</p>
+  <p style="top: 225px">Card ${cardInSpans}</p>
 </div>`;
 
 describe('hiding what is private', () => {
@@ -83,6 +85,20 @@ describe('hiding what is private', () => {
       assert.notEqual(await colourAt(file, 30, 30), covered, `${when}: the words before the address`);
       for (let x = 20; x < 300; x += 4) assert.notEqual(await colourAt(file, x, 70), covered, `${when}: plain words at ${String(x)}`);
     }
+  });
+
+  it('says plainly when a --mask finds nothing, or cannot be read', async () => {
+    const asked = (mask) => run([
+      '--pr', '2', '--before', addressOf(was), '--after', addressOf(now), '--out', out, '--part', 'card=.card',
+      '--devices', 'desk', '--wait', '0', '--mask', mask,
+    ]);
+    const nowhere = await asked('.nowhere');
+    assert.equal(nowhere.status, 0, nowhere.stderr);
+    assert.match(nowhere.stdout, /--mask \.nowhere found nothing on any picture: check the selector\./);
+    const unread = await asked('p[');
+    assert.equal(unread.status, 1);
+    assert.match(unread.stderr, /Cannot read --mask p\[ as a selector/);
+    assert.doesNotMatch(unread.stderr, /\n\s+at /, 'no stack trace');
   });
 
   it('says what it hid', () => {
