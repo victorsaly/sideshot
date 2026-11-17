@@ -406,7 +406,8 @@ What is drawn on the pictures
 What is hidden, always, before a picture is kept
   --mask selector          hide every element it finds, whole; repeat for more. Hidden too, on every run:
                            what the page marks data-sideshot-mask, email addresses, card numbers, IBANs,
-                           keys and tokens, and filled fields that hold a phone, an address, a name or the like
+                           keys and tokens, and form fields whose autocomplete says they hold a phone, an address,
+                           a name or the like
 
 Running
   --wait ms                time a part is given to settle before it is pictured (default 1500)

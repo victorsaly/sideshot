@@ -122,7 +122,8 @@ Add `--note` and `--mark-changes` and the picture says what changed: a numbered 
   it, and when all of it is new the description says *What's new*. `--new` does the same sooner, never opening a
   "before" site at all.
 - **What is private stays out of the pictures.** Email addresses, card numbers, IBANs, keys and tokens, and
-  filled fields holding a phone, an address or a name are covered with a solid box before a picture is kept, and
+  form fields whose `autocomplete` says they hold a phone, an address or a name are covered with a solid box
+  before a picture is kept, and
   the run says how many. `--mask` (or `data-sideshot-mask` in the page) hides anything else, whole.
 - **Nothing to compare, said plainly.** A pair the same before and after is left out, and named under the table.
   When nothing is left, nothing is pushed, and the description says why.
@@ -167,8 +168,9 @@ name or an address in plain text is not: picture nothing you would not put in th
 - **Before** is the site as it is: production, a preview deploy, or `main` run locally when the page sits behind a
   login.
 - **After** is your branch, running locally.
-- **What is private** (email addresses, card numbers, keys, filled form fields, and whatever `--mask` names) is
-  covered before a picture is written, so it never reaches your disk or the pull request.
+- **What is private** (email addresses, card numbers, keys, form fields whose `autocomplete` says they hold a
+  phone, an address or a name, and whatever `--mask` names) is covered before a picture is written, so it never
+  reaches your disk or the pull request. A field that says nothing of what it holds is covered only by `--mask`.
 - **Live data.** When a page reads data only production can reach (an API behind a login, a database), a small
   `--setup` file gives both sides the same stand-in data, so only your change differs (below).
 
@@ -200,7 +202,7 @@ node skills/sideshot/scripts/sideshot.mjs --pr 123 --page /pricing --part plans=
 | `--mark-changes` | off | Outlines what was added or changed; a dashed rule where something was taken out. |
 | `--accent colour` | `auto` | The marking colour: `auto` (marigold, unless the page is close to it), `marigold`, `magenta`, `cyan`, `violet`, `lime`, or `#hex`. |
 | `--no-watermark` | | Leaves off the small SideShot tag in the corner of each "after" picture. |
-| `--mask "selector"` | | Covers every element it finds, whole, on every picture; repeat for more. Email addresses, card numbers, IBANs, keys and tokens, private form fields and `data-sideshot-mask` are covered without it. |
+| `--mask "selector"` | | Covers every element it finds, whole, on every picture; repeat for more. Email addresses, card numbers, IBANs, keys and tokens, form fields whose `autocomplete` names what they hold, and `data-sideshot-mask` are covered without it. |
 | `--setup ./file.mjs` | | Runs on each page before it opens: stand-in data, a cookie, a login. |
 | `--wait ms` | `1500` | How long, in milliseconds, a part is given to settle once it is in view, before it is pictured. |
 | `--jobs N` | `4` | How many pictures are taken at once. |

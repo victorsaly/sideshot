@@ -10,8 +10,9 @@ For coding agents changing this repository. People: [CONTRIBUTING.md](CONTRIBUTI
 - `skills/sideshot/scripts/lib.mjs`: everything that can be worked out without a browser or git: reading the
   options, `--help`'s words, the table, what to prune. Pure functions, at least 90% covered by `test/lib.test.mjs`.
 - `skills/sideshot/scripts/hide.mjs`: what is private, found in words and form fields (email addresses, card
-  numbers, keys, filled fields), and the `--mask` selectors. Pure, at least 90% covered by `test/hide.test.mjs`;
-  sideshot.mjs finds where each shows on the page and covers it before the picture is written.
+  numbers, keys, fields whose autocomplete says what they hold), and the `--mask` selectors. Pure, at least 90%
+  covered by `test/hide.test.mjs`; sideshot.mjs finds where each shows on the page and covers it before the
+  picture is written.
 - `skills/sideshot/scripts/hook.mjs` and `hooks/hooks.json`: the Claude Code plugin's reminder after a push. What
   it decides on is `reminderOf`, in lib.mjs; the script only asks git and gh, and never fails the command.
 - `skills/sideshot/scripts/draw.mjs`: handed to the page as source and run there, so browser globals, not Node's.
