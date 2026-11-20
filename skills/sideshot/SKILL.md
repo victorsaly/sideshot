@@ -3,7 +3,7 @@ name: sideshot
 description: Before-and-after screenshots of the part of a page a pull request changes (a component, a section, a style), not the whole page, on a desk and a phone, optionally in dark mode, with what changed marked, shown to the user first, then kept on a branch of their own and put in the PR description as a table. Use when opening or updating a PR with visible UI changes, or when asked for before and after pictures, screenshots for review, to show reviewers how something looked and looks now, visual proof of a change, or to "sideshot" a PR. Load it before planning the pictures, even when asked not to run anything yet.
 license: MIT
 metadata:
-  version: 0.8.0
+  version: 0.9.0
   homepage: https://github.com/victorsaly/sideshot
 allowed-tools: Bash(node ${CLAUDE_SKILL_DIR}/scripts/*)
 ---
@@ -15,6 +15,13 @@ branch that never merges, with a table in the PR description. The script is `scr
 file (in Claude Code, `${CLAUDE_SKILL_DIR}`); run it with Node from the project's folder. `--help` says every
 option, so there is no need to read the script.
 
+## First, what this machine has
+
+Run `--check` yourself before the first pictures in a project, and whenever a run says something is missing. Do
+not hand the person the command or its output. Tell them, in the chat and in plain words, what is missing and what
+you would run to add each (naming anything that changes the project, such as its `package.json` or `.gitignore`),
+and ask which to go ahead with. Run what they agree to, run `--check` again, and carry on with the pictures.
+
 ## 1. Decide what to picture, from the diff
 
 - **The page** the change shows on (`--page /pricing`), one run per page.
@@ -25,11 +32,15 @@ option, so there is no need to read the script.
   the user names them (`--devices`; desk and phone otherwise).
 - **What to say on the picture**: two or three `--note "selector=what changed"` (a numbered ring, its words under
   the table), and `--mark-changes` to box whatever else differs.
+- **A state the page must be in first** (a status, an error, a refused action) that the local data does not
+  reach: set it up with `--setup` ([reference.md](reference.md)), the same on both sides, and say in the PR that
+  it was set up. "The data cannot show it" is seldom a reason for no pictures.
 - **A new feature**, with nothing before it to compare (a new page, section or component): a part not there
   before is shown by itself, as it is, with nothing drawn on it, and the table says what's new. When you know it is
   all new, `--new` does that sooner, without opening before (no `--before`, `--note` or `--mark-changes`).
 
-The pull request is found with `gh` for this branch; when there is none yet, open it first.
+The pull request is found for this branch (with `gh` on GitHub, or the sign-in on Azure DevOps); when there is
+none yet, open it first.
 
 ## 2. Where before and after run
 
@@ -59,8 +70,14 @@ says why: check that `--after` is this branch and that `--page` and `--part` sho
 does not show there, `--update-pr --reuse` says so in the PR description, and why, in place of a table.
 
 When the pictures show the change, publish those same pictures: the same command with `--update-pr --reuse`. It
-pushes them to the `sideshot` branch and puts the table in the PR description, replacing an earlier one. This
-writes to the repository: do it only for the user's own PR, and tell them, with the link.
+pushes them to the `sideshot` branch and puts the table in the PR description, replacing an earlier one. On Azure
+DevOps it uploads them to the PR and puts the table in a comment of its own instead: see
+[reference.md](reference.md). This writes to the repository: do it only for the user's own PR, and tell them, with
+the link.
+
+Before saying the pull request is ready, check that the table is on it. The same pictures stay in
+`.sideshot/<pr>/`, with the table in `table.md`: use those for anywhere else the change is reviewed (a ticket, or
+a paired back-end pull request whose effect is what these pictures show), not a second set taken another way.
 
 ## 4. Clean up old pictures
 
@@ -79,12 +96,13 @@ again then.
 
 ## Things to know
 
-- **Playwright** comes from the project, or from a global install for a project without Node. If there is none,
-  the script says so: ask before adding it.
+- **Playwright** comes from the project, or from a global install (for a project without Node, or to leave the
+  project's `package.json` as it is).
 - **Add `.sideshot/` to `.gitignore`.**
 - **What is private is covered on every picture**, before it is kept: email addresses, card numbers, IBANs, keys
   and tokens, and form fields whose `autocomplete` says they hold a phone, an address or a name. The run says how
   many. Names and addresses in plain text, and fields that say nothing of what they hold, have no shape to find:
   hide them with `--mask ".customer-name"` (repeat for more), or
   better, picture stand-in data ([reference.md](reference.md)).
-- Running `main` locally as "before", stand-in data, devices, colours and the tag: [reference.md](reference.md).
+- Running `main` locally as "before", stand-in data, devices, colours, the tag and Azure DevOps:
+  [reference.md](reference.md).

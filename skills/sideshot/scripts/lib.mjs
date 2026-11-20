@@ -101,6 +101,147 @@ export function slugOf(remote) {
   return m ? `${m[1]}/${m[2]}` : null;
 }
 
+/** The Azure DevOps repository origin is (organisation, project and repository, unescaped), from any address it is
+ * reached by: https on dev.azure.com or an organisation's older visualstudio.com, or ssh. A login in the address is
+ * left out. null when origin is not on Azure DevOps, or a name in it would leave its place in an API address. */
+export function azureOf(remote) {
+  const forms = [
+    /^https:\/\/(?:[^@/]+@)?dev\.azure\.com\/([^/]+)\/([^/]+)\/_git\/([^/?#]+?)\/?$/,
+    /^https:\/\/(?:[^@/]+@)?([A-Za-z0-9-]+)\.visualstudio\.com\/(?:DefaultCollection\/)?([^/]+)\/_git\/([^/?#]+?)\/?$/,
+    /^(?:ssh:\/\/)?git@ssh\.dev\.azure\.com(?::22)?[:/]v3\/([^/]+)\/([^/]+)\/([^/]+?)\/?$/,
+    /^(?:ssh:\/\/)?[^@/]+@vs-ssh\.visualstudio\.com(?::22)?[:/]v3\/([^/]+)\/([^/]+)\/([^/]+?)\/?$/,
+  ];
+  for (const form of forms) {
+    const m = form.exec(String(remote).trim());
+    if (!m) continue;
+    let names;
+    try {
+      names = m.slice(1, 4).map((n) => decodeURIComponent(n));
+    } catch {
+      return null;
+    }
+    if (names.some((n) => n === '' || n === '.' || n === '..' || /[/\\?#]/.test(n))) return null;
+    const [org, project, repo] = names;
+    return { org, project, repo };
+  }
+  return null;
+}
+
+/** The address of a repository's Git API on Azure DevOps, under base. */
+export const azureApiOf = ({ org, project, repo }, base) =>
+  `${base}/${[org, project].map(encodeURIComponent).join('/')}/_apis/git/repositories/${encodeURIComponent(repo)}`;
+
+/** Where Azure DevOps is asked: dev.azure.com, or, for the tests, a stand-in on this machine named in
+ * SIDESHOT_AZURE_URL. A sign-in goes with every request, so it never goes to another machine that way. */
+export function azureBaseOf(env) {
+  try {
+    const where = new URL(String(env.SIDESHOT_AZURE_URL));
+    if (['127.0.0.1', 'localhost', '[::1]'].includes(where.hostname) && where.protocol === 'http:')
+      return where.origin;
+  } catch {
+    // Not set, or not an address.
+  }
+  return 'https://dev.azure.com';
+}
+
+/** The Authorization header for Azure DevOps from the environment: a personal access token
+ * (AZURE_DEVOPS_EXT_PAT, the one the Azure CLI's devops commands read), else a pipeline's own token
+ * (SYSTEM_ACCESSTOKEN). null when neither is set; the Azure CLI's sign-in is asked then. */
+export function azureAuthOf(env) {
+  const pat = String(env.AZURE_DEVOPS_EXT_PAT ?? '').trim();
+  if (pat !== '') return `Basic ${Buffer.from(`:${pat}`).toString('base64')}`;
+  const pipeline = String(env.SYSTEM_ACCESSTOKEN ?? '').trim();
+  return pipeline === '' ? null : `Bearer ${pipeline}`;
+}
+
+/** The pull request for this branch, from what Azure DevOps lists for it as the source: the one active pull request
+ * not from a fork. None, or more than one, is null, so --pr is asked for rather than guessed. */
+export function azurePrOf(listed) {
+  const own = (Array.isArray(listed?.value) ? listed.value : []).filter(
+    (p) => p && !p.forkSource && Number.isInteger(p.pullRequestId),
+  );
+  return own.length === 1 ? String(own[0].pullRequestId) : null;
+}
+
+/** The files a pull request on Azure DevOps changes, from the changes of its newest iteration: paths as git says
+ * them (no leading slash), folders left out. */
+export const azureFilesOf = (changes) =>
+  (Array.isArray(changes?.changeEntries) ? changes.changeEntries : [])
+    .filter((c) => c?.item && !c.item.isFolder && typeof c.item.path === 'string')
+    .map((c) => c.item.path.replace(/^\/+/, ''));
+
+/** A picture's name as an attachment of its pull request: what it holds first, since a pull request takes a name
+ * once, so a picture taken again under the same name is a new attachment, and the same picture is not sent twice. */
+export const attachmentNameOf = (file, hash) => `${hash.slice(0, 12)}-${file}`;
+
+/** The address Azure DevOps gave for an uploaded picture, when it is one of its own: on the machine that was asked
+ * (api), under its API, and an attachment. Anything else is null: the address goes into the pull request and
+ * table.md, so one that points elsewhere is not passed on. */
+export function attachmentLinkOf(url, api) {
+  try {
+    const given = new URL(String(url));
+    const ok = given.origin === new URL(api).origin && /\/_apis\/git\/repositories\/[^/]+\/pullRequests\/\d+\/attachments\/[^/?#]+$/.test(given.pathname);
+    return ok && given.search === '' && given.hash === '' ? given.href : null;
+  } catch {
+    return null;
+  }
+}
+
+/** SideShot's own comment on an Azure DevOps pull request, from its threads: the first comment of a thread, opened
+ * between the markers, neither deleted. null when there is none yet. */
+export function ownThreadOf(threads) {
+  for (const t of Array.isArray(threads?.value) ? threads.value : []) {
+    const first = t?.comments?.[0];
+    if (!t.isDeleted && first && !first.isDeleted && String(first.content ?? '').startsWith(markers.start))
+      return { thread: t.id, comment: first.id };
+  }
+  return null;
+}
+
+// The most an Azure DevOps pull request's description holds, in UTF-16 code units, which is how JavaScript counts.
+const azureDescriptionMost = 4000;
+
+/** The description with these words between the markers, as bodyWith puts them, or null when that would not fit
+ * in what Azure DevOps takes: the description is the author's, so it is left as it is then. */
+export function describedWith(description, words) {
+  const next = bodyWith(String(description ?? ''), words);
+  return next.length <= azureDescriptionMost ? next : null;
+}
+
+/** What --check says: each thing SideShot needs on this machine, there or not, and for what is not, the command
+ * that adds it. Taking pictures needs Node, Playwright and its browser; publishing also needs a sign-in to where
+ * origin is. ready is whether pictures can be taken; all, whether they can be published too. */
+export function checkOf({ node, playwright, browser, packageJson, host, signedIn, ignored, refused = false, windows = false }) {
+  const lines = [];
+  const say = (ok, what, fix) => lines.push(ok ? `ok       ${what}` : `missing  ${what}\n         ${fix.join('\n         ')}`);
+  const nodeOk = Number(String(node).split('.')[0]) >= 22;
+  say(nodeOk, `Node ${node}${nodeOk ? '' : ' (22 or later is needed)'}`, ['Install Node 22 or later: https://nodejs.org']);
+  const add = packageJson
+    ? [
+        'For this project (changes package.json): npm i -D playwright && npx playwright install chromium',
+        'Or for you alone, nothing in the project: npm i -g playwright && npx playwright install chromium',
+      ]
+    : ['npm i -g playwright && npx playwright install chromium'];
+  const whose = playwright === 'project' ? "the project's" : 'installed globally';
+  say(playwright !== null, playwright === null ? 'Playwright' : `Playwright (${whose})`, add);
+  if (playwright !== null) say(browser, "Playwright's Chromium", ['npx playwright install chromium']);
+  if (host === 'azure')
+    say(signedIn, `A sign-in to Azure DevOps, to publish${refused ? ' (the one here was refused: wrong, past its date, or without this repository)' : ''}`, [
+      'az login',
+      `Without the Azure CLI: ${windows ? 'winget install Microsoft.AzureCLI' : 'https://aka.ms/install-azure-cli'}, then az login`,
+      'Or a personal access token with Code (read and write) in AZURE_DEVOPS_EXT_PAT',
+    ]);
+  else if (host === 'github')
+    say(signedIn, 'The GitHub CLI, signed in, to publish', [
+      'gh auth login',
+      `Without the GitHub CLI: ${windows ? 'winget install GitHub.cli' : 'https://cli.github.com'}, then gh auth login`,
+    ]);
+  else lines.push('note     origin is not on GitHub or Azure DevOps: pictures can be taken, not published.');
+  say(ignored, '.sideshot/ in .gitignore', ['Add a line to .gitignore: .sideshot/']);
+  const ready = nodeOk && playwright !== null && browser === true;
+  return { lines, ready, all: ready && ignored && (host === null || signedIn) };
+}
+
 /** .sideshot.json, read: an object of defaults, or a UsageError that says what is wrong with it. */
 export function configOf(text) {
   let config;
@@ -244,6 +385,12 @@ export function optionsOf(args, config = {}) {
     throw new UsageError(`Cannot use --branch ${branch}. Use a branch name like sideshot or shots/ui.`);
 
   const page = one('--page', 'page', '/');
+  // Git Bash on Windows rewrites a word that starts with / into a folder under where Git is installed.
+  if (/^[A-Za-z]:[\\/]/.test(page))
+    throw new UsageError(
+      `--page ${page} is a folder on this machine, not a page: Git Bash rewrote it. Run with MSYS_NO_PATHCONV=1 ` +
+        'before the command, or put "page" in .sideshot.json.',
+    );
   const updatePr = args.includes('--update-pr');
   const publish = updatePr || args.includes('--publish');
   // The pictures already taken, published as they were looked at, rather than taken again.
@@ -413,10 +560,16 @@ Running
   --wait ms                time a part is given to settle before it is pictured (default 1500)
   --jobs N                 pictures taken at once (default 4)
   --out folder             where the pictures go (default .sideshot), in a folder for the PR
-  --publish                push the pictures to the picture branch and print the table
-  --update-pr              also put the table in the PR description (needs gh)
+  --publish                push the pictures to the picture branch and print the table (on Azure DevOps:
+                           upload them to the PR)
+  --update-pr              also put the table in the PR description (needs gh; on Azure DevOps, in a comment,
+                           signed in with az login or AZURE_DEVOPS_EXT_PAT)
   --reuse                  with --publish or --update-pr: the pictures already taken, as they are
   --branch name            the picture branch, which never merges (default sideshot)
+
+Before the first run
+  --check                  says what SideShot needs on this machine and what is missing, with the command
+                           that adds each (Playwright, its browser, a sign-in to publish); changes nothing
 
 Cleaning up
   --prune                  take off the picture branch the pictures of pull requests closed or merged
@@ -584,11 +737,12 @@ export function textDiffOf(before, after) {
   return lines;
 }
 
-export function tableOf({ parts, chosen, schemes, notes, files, before, after, page, slug, branch, pr, same = [], markChanges = false, whole = [], texts = {}, loupes = false, onlyNew = false, drawn = null }) {
+export function tableOf({ parts, chosen, schemes, notes, files, before, after, page, slug, branch, pr, same = [], markChanges = false, whole = [], texts = {}, loupes = false, onlyNew = false, drawn = null, links = null }) {
+  // Each picture where it was put: an attachment of the pull request on Azure DevOps (links), else the branch.
   // Through github.com, not raw.githubusercontent.com: that answers 404 for a private repository, even to those who
   // can read it, where github.com sends them on with their sign-in. The branch in full (refs/heads/), so one with a
   // slash in it is not taken for part of the path.
-  const url = (file) => `https://github.com/${slug}/raw/refs/heads/${branch}/${pr}/${file}`;
+  const url = (file) => links?.[file] ?? `https://github.com/${slug}/raw/refs/heads/${branch}/${pr}/${file}`;
   // The pairs shown. With --new nothing was taken before, so a before left from an earlier run is not one of them.
   const pairs = [];
   for (const part of parts)
@@ -660,10 +814,15 @@ export function bodyWith(body, table) {
 }
 
 /** A shell command's steps (split at &&, ||, ;, |, & and new lines) and each step's words, as the shell reads
- * them for this: quotes keep what is in them together, and a backslash keeps the character after it. Enough to know
- * what a command runs, and where; not a shell. */
-function stepsOf(command) {
+ * them for this: quotes keep what is in them together, and a backslash keeps the character after it. In PowerShell
+ * that character is the backtick, and a backslash is only part of a path (C:\src\site). Enough to know what a
+ * command runs, and where; not a shell. */
+function stepsOf(command, powershell = false) {
   const text = String(command);
+  const keep = powershell ? '`' : '\\';
+  // The character an escape keeps, or nothing for a line carried on to the next.
+  const kept = (i) => (text[i] === '\n' || (text[i] === '\r' && text[i + 1] === '\n') ? '' : text[i]);
+  const past = (i) => (text[i] === '\r' && text[i + 1] === '\n' ? i + 1 : i);
   const steps = [[]];
   let word = null;
   let quote = null;
@@ -675,13 +834,15 @@ function stepsOf(command) {
     const c = text[i];
     if (quote !== null) {
       if (c === quote) quote = null;
-      else if (c === '\\' && quote === '"' && i + 1 < text.length) word += text[(i += 1)];
+      else if (c === keep && quote === '"' && i + 1 < text.length) word += text[(i += 1)];
       else word += c;
     } else if (c === "'" || c === '"') {
       quote = c;
       word ??= '';
-    } else if (c === '\\' && i + 1 < text.length) {
-      word = (word ?? '') + text[(i += 1)];
+    } else if (c === keep && i + 1 < text.length) {
+      const next = kept(i + 1);
+      if (next !== '') word = (word ?? '') + next;
+      i = past(i + 1);
     } else if (c === '&' && (text[i - 1] === '>' || text[i + 1] === '>')) {
       // A redirect (2>&1, &>), not a second command.
       word = (word ?? '') + c;
@@ -710,13 +871,16 @@ function flagOf(words, long, short) {
 /** Where a command pushes a branch, or opens a pull request (gh pr create, or ready from a draft), or null when it
  * does neither: after it, the pull request may want pictures. dirs are the folders cd and git -C moved to before
  * it, in order, from where the command was run; pr and repo are the pull request and repository, when the command
- * names them. Pushes of tags, and deletions, change no pull request. */
-export function pushOf(command) {
+ * names them. Pushes of tags, and deletions, change no pull request. powershell says the command was written for
+ * PowerShell, where a backslash is part of a path and Set-Location is cd. */
+export function pushOf(command, { powershell = false } = {}) {
   const dirs = [];
-  for (const step of stepsOf(command)) {
+  for (const step of stepsOf(command, powershell)) {
     const [name, ...rest] = step.slice(step.findIndex((w) => !/^\w+=/.test(w)));
-    if (name === 'cd') {
-      dirs.push(rest[0] ?? '~');
+    const moves = name === 'cd' || (powershell && ['cd', 'chdir', 'sl', 'set-location', 'pushd', 'push-location'].includes(name.toLowerCase()));
+    if (moves) {
+      // PowerShell names the folder after -Path or -LiteralPath, or by itself.
+      dirs.push(rest.find((w) => !(powershell && /^-(?:literal)?path$/i.test(w))) ?? '~');
     } else if (name === 'gh' && rest[0] === 'pr' && (rest[1] === 'create' || rest[1] === 'ready')) {
       const after = rest.slice(2);
       const repo = flagOf(after, '--repo', '-R');
@@ -724,6 +888,9 @@ export function pushOf(command) {
       const named = after.find((w, i) => !w.startsWith('-') && !['--repo', '-R'].includes(after[i - 1]));
       const pr = rest[1] === 'ready' ? (named ?? null) : null;
       return { dirs, pr, repo };
+    } else if (name === 'az' && rest[0] === 'repos' && rest[1] === 'pr' && rest[2] === 'create') {
+      // On Azure DevOps the pull request opened is this branch's, found as after a push.
+      return { dirs, pr: null, repo: null };
     } else if (name === 'git') {
       const here = [...dirs];
       let i = 0;

@@ -289,7 +289,7 @@ describe('the plugin\'s hook', () => {
 
   it('runs after each Bash command, so it sees a push or a pull request opened', () => {
     const [entry] = hooks.PostToolUse;
-    assert.equal(entry.matcher, 'Bash');
+    assert.equal(entry.matcher, 'Bash|PowerShell');
     assert.equal(entry.hooks[0].type, 'command');
   });
 
