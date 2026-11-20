@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.9.0 (unreleased)
+## 0.9.0 (2026-11-20)
 
 - **SideShot publishes to Azure DevOps.** When origin is on Azure DevOps (dev.azure.com, an older
   visualstudio.com, over https or ssh), `--publish` uploads the pictures as attachments of the pull request, each
