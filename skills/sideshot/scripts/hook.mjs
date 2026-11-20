@@ -83,7 +83,13 @@ try {
     }
     // The pull request the command named, else the branch's; its files from GitHub, so a base branch never fetched
     // here does not matter.
-    const azure = azureOf(run('git', ['remote', 'get-url', 'origin'], root));
+    let remote = '';
+    try {
+      remote = run('git', ['remote', 'get-url', 'origin'], root);
+    } catch {
+      // No origin: gh is asked, as before, and finds the repository its own way.
+    }
+    const azure = azureOf(remote);
     let body, files;
     if (azure) {
       ({ body, files } = await onAzure(azure, root));
