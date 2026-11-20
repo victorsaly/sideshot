@@ -115,7 +115,7 @@ describe('publishing to Azure DevOps', () => {
     assert.equal(thread.status, 4);
     const content = thread.comments[0].content;
     assert.match(content, /^<!-- sideshot:start -->\n## Before and after\n/);
-    assert.match(content, /<img src="https:\/\/att\.example\/[0-9a-f]{12}-card-desk-after\.png" width="420">/);
+    assert.match(content, /<img src="http:\/\/127\.0\.0\.1:\d+\/fabrikam\/p1\/_apis\/git\/repositories\/r1\/pullRequests\/7\/attachments\/[0-9a-f]{12}-card-desk-after\.png" width="420">/);
     assert.match(stand.state.description, /^Fixes the pricing card\.\n\n<!-- sideshot:start -->\n.*comment.*\n<!-- sideshot:end -->\n$/);
     // Every request signed in with the token, and none to GitHub.
     assert.ok(stand.state.requests.every((r) => r.auth === `Basic ${Buffer.from(':not-a-real-token').toString('base64')}`));
@@ -147,6 +147,13 @@ describe('publishing to Azure DevOps', () => {
     assert.equal(result.status, 2, result.stdout);
     assert.match(result.stderr, /needs a sign-in to Azure DevOps: az login .* or a personal access token .* in AZURE_DEVOPS_EXT_PAT/);
     assert.doesNotMatch(result.stdout, /Took/);
+  });
+
+  it('asks for the sign-in, not the pull request, when neither is given', async () => {
+    const result = await publish(['--part', 'card=.card', '--update-pr'],
+      { PATH: bare, HOME: place, SIDESHOT_AZURE_URL: env.SIDESHOT_AZURE_URL });
+    assert.equal(result.status, 2, result.stderr);
+    assert.match(result.stderr, /--update-pr needs a sign-in to Azure DevOps/);
   });
 
   it('says what Azure DevOps answered when it refuses, and what to do', async () => {

@@ -230,8 +230,17 @@ async function checking() {
   }
   const host = azure ? 'azure' : slugOf(remote) ? 'github' : null;
   let signedIn = false;
-  if (host === 'azure') signedIn = azureSignIn() !== null;
-  else if (host === 'github') {
+  let refused = false;
+  if (host === 'azure' && azureSignIn() !== null) {
+    // Asked for the repository, which changes nothing: a token that is wrong or past its date is refused here, not
+    // after the pictures are taken.
+    try {
+      await azureCall('GET', '');
+      signedIn = true;
+    } catch {
+      refused = true;
+    }
+  } else if (host === 'github') {
     try {
       execFileSync('gh', ['auth', 'status', '--hostname', 'github.com'], { stdio: 'ignore' });
       signedIn = true;
@@ -252,6 +261,7 @@ async function checking() {
     packageJson: existsSync(join(root, 'package.json')),
     host,
     signedIn,
+    refused,
     ignored,
     windows: process.platform === 'win32',
   });
@@ -265,7 +275,6 @@ async function checking() {
   );
   process.exit(all ? 0 : 2);
 }
-if (args.includes('--check')) await checking();
 
 /** What Azure DevOps refused, said in a sentence without a stack. */
 class AzureRefusal extends Error {}
@@ -285,6 +294,17 @@ async function azureCall(method, path, body, type = 'application/json') {
   }
   return answer.json();
 }
+
+if (args.includes('--check')) await checking();
+
+/** Publishing to Azure DevOps with no sign-in: said plainly, with how, and stopped before anything is taken. */
+const signInFirst = (forWhat) => {
+  console.error(
+    `${forWhat} needs a sign-in to Azure DevOps: az login (the Azure CLI), ` +
+      'or a personal access token with Code (read and write) in AZURE_DEVOPS_EXT_PAT.',
+  );
+  process.exit(2);
+};
 
 try {
   const configFile = join(root, '.sideshot.json');
@@ -319,6 +339,10 @@ try {
         // No gh, no pull request yet, or more than one: optionsOf asks for one.
       }
     }
+    // No sign-in is said before the pull request is asked for: without one it cannot be found, and "which pull
+    // request?" would be the wrong question.
+    const asksToPublish = args.includes('--update-pr') ? '--update-pr' : args.includes('--publish') ? '--publish' : null;
+    if (azure && asksToPublish !== null && azureSignIn() === null) signInFirst(asksToPublish);
     // On Azure DevOps, the one Azure DevOps lists from this branch, when there is a sign-in to ask it with.
     if (!args.includes('--pr') && config.pr === undefined && azure && azureSignIn() !== null) {
       try {
@@ -343,13 +367,7 @@ try {
 }
 // gh, there and signed in, before anything that needs it (the description, or the pull requests to prune): said
 // now, plainly, not as gh's own error halfway through, with the pictures pushed and no table.
-if (!pruning && options.publish && azure && azureSignIn() === null) {
-  console.error(
-    `${options.updatePr ? '--update-pr' : '--publish'} needs a sign-in to Azure DevOps: az login (the Azure CLI), ` +
-      'or a personal access token with Code (read and write) in AZURE_DEVOPS_EXT_PAT.',
-  );
-  process.exit(2);
-}
+if (!pruning && options.publish && azure && azureSignIn() === null) signInFirst(options.updatePr ? '--update-pr' : '--publish');
 if ((pruning || options.updatePr) && !azure) {
   const forWhat = pruning ? '--prune' : '--update-pr';
   try {

@@ -61,14 +61,21 @@ async function onAzure(azure, root) {
   const at = `/pullRequests/${id}`;
   const [threads, iterations] = await Promise.all([ask(`${at}/threads`), ask(`${at}/iterations`)]);
   const newest = String(iterations.value.at(-1).id);
-  const files = azureFilesOf(await ask(`${at}/iterations/${newest}/changes?$top=2000&$compareTo=0`));
+  // Every page of them: Azure DevOps says where the next one starts (nextSkip) while there is one. Twenty pages is
+  // more than a pull request anyone reviews.
+  const files = [];
+  for (let skip = 0, page = 0; skip !== null && page < 20; page += 1) {
+    const changes = await ask(`${at}/iterations/${newest}/changes?$top=2000&$skip=${String(skip)}&$compareTo=0`);
+    files.push(...azureFilesOf(changes));
+    skip = Number.isInteger(changes.nextSkip) && changes.nextSkip > skip ? changes.nextSkip : null;
+  }
   return { body: ownThreadOf(threads) === null ? '' : markers.start, files };
 }
 
 try {
   const input = JSON.parse(readFileSync(0, 'utf8'));
   const command = String(input.tool_input?.command ?? '');
-  const push = pushOf(command);
+  const push = pushOf(command, { powershell: input.tool_name === 'PowerShell' });
   // Most commands are not a push, and some people want no reminder: both are let go before git or gh is asked
   // anything.
   if (push !== null && !quietIn(process.env)) {

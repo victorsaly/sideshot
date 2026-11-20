@@ -19,6 +19,9 @@
 - **`--check` says what is missing on this machine, and the command that adds it:** Node, Playwright and its
   Chromium, the sign-in to publish (GitHub CLI, or Azure CLI or a token), and `.sideshot/` in `.gitignore`. It
   changes nothing; the skill has the agent run it first in a project, and ask before installing.
+- **`--check` tries the Azure DevOps sign-in**, with a request that changes nothing, so a token that is wrong or
+  past its date is said before any picture is taken. Publishing with no sign-in and no `--pr` asks for the sign-in,
+  not for the pull request.
 - **On Windows, a `--page` that Git Bash rewrote into a folder is refused**, with what to do, where it used to
   picture a page that is not there. Signing in with the Azure CLI no longer prints a warning from Node.
 - **`--prune` has nothing to do on Azure DevOps**, where the pictures go with their pull request, and says so.

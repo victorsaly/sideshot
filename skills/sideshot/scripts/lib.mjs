@@ -211,7 +211,7 @@ export function describedWith(description, words) {
 /** What --check says: each thing SideShot needs on this machine, there or not, and for what is not, the command
  * that adds it. Taking pictures needs Node, Playwright and its browser; publishing also needs a sign-in to where
  * origin is. ready is whether pictures can be taken; all, whether they can be published too. */
-export function checkOf({ node, playwright, browser, packageJson, host, signedIn, ignored, windows = false }) {
+export function checkOf({ node, playwright, browser, packageJson, host, signedIn, ignored, refused = false, windows = false }) {
   const lines = [];
   const say = (ok, what, fix) => lines.push(ok ? `ok       ${what}` : `missing  ${what}\n         ${fix.join('\n         ')}`);
   const nodeOk = Number(String(node).split('.')[0]) >= 22;
@@ -226,7 +226,7 @@ export function checkOf({ node, playwright, browser, packageJson, host, signedIn
   say(playwright !== null, playwright === null ? 'Playwright' : `Playwright (${whose})`, add);
   if (playwright !== null) say(browser, "Playwright's Chromium", ['npx playwright install chromium']);
   if (host === 'azure')
-    say(signedIn, 'A sign-in to Azure DevOps, to publish', [
+    say(signedIn, `A sign-in to Azure DevOps, to publish${refused ? ' (the one here was refused: wrong, past its date, or without this repository)' : ''}`, [
       'az login',
       `Without the Azure CLI: ${windows ? 'winget install Microsoft.AzureCLI' : 'https://aka.ms/install-azure-cli'}, then az login`,
       'Or a personal access token with Code (read and write) in AZURE_DEVOPS_EXT_PAT',
@@ -814,10 +814,15 @@ export function bodyWith(body, table) {
 }
 
 /** A shell command's steps (split at &&, ||, ;, |, & and new lines) and each step's words, as the shell reads
- * them for this: quotes keep what is in them together, and a backslash keeps the character after it. Enough to know
- * what a command runs, and where; not a shell. */
-function stepsOf(command) {
+ * them for this: quotes keep what is in them together, and a backslash keeps the character after it. In PowerShell
+ * that character is the backtick, and a backslash is only part of a path (C:\src\site). Enough to know what a
+ * command runs, and where; not a shell. */
+function stepsOf(command, powershell = false) {
   const text = String(command);
+  const keep = powershell ? '`' : '\\';
+  // The character an escape keeps, or nothing for a line carried on to the next.
+  const kept = (i) => (text[i] === '\n' || (text[i] === '\r' && text[i + 1] === '\n') ? '' : text[i]);
+  const past = (i) => (text[i] === '\r' && text[i + 1] === '\n' ? i + 1 : i);
   const steps = [[]];
   let word = null;
   let quote = null;
@@ -829,13 +834,15 @@ function stepsOf(command) {
     const c = text[i];
     if (quote !== null) {
       if (c === quote) quote = null;
-      else if (c === '\\' && quote === '"' && i + 1 < text.length) word += text[(i += 1)];
+      else if (c === keep && quote === '"' && i + 1 < text.length) word += text[(i += 1)];
       else word += c;
     } else if (c === "'" || c === '"') {
       quote = c;
       word ??= '';
-    } else if (c === '\\' && i + 1 < text.length) {
-      word = (word ?? '') + text[(i += 1)];
+    } else if (c === keep && i + 1 < text.length) {
+      const next = kept(i + 1);
+      if (next !== '') word = (word ?? '') + next;
+      i = past(i + 1);
     } else if (c === '&' && (text[i - 1] === '>' || text[i + 1] === '>')) {
       // A redirect (2>&1, &>), not a second command.
       word = (word ?? '') + c;
@@ -864,13 +871,16 @@ function flagOf(words, long, short) {
 /** Where a command pushes a branch, or opens a pull request (gh pr create, or ready from a draft), or null when it
  * does neither: after it, the pull request may want pictures. dirs are the folders cd and git -C moved to before
  * it, in order, from where the command was run; pr and repo are the pull request and repository, when the command
- * names them. Pushes of tags, and deletions, change no pull request. */
-export function pushOf(command) {
+ * names them. Pushes of tags, and deletions, change no pull request. powershell says the command was written for
+ * PowerShell, where a backslash is part of a path and Set-Location is cd. */
+export function pushOf(command, { powershell = false } = {}) {
   const dirs = [];
-  for (const step of stepsOf(command)) {
+  for (const step of stepsOf(command, powershell)) {
     const [name, ...rest] = step.slice(step.findIndex((w) => !/^\w+=/.test(w)));
-    if (name === 'cd') {
-      dirs.push(rest[0] ?? '~');
+    const moves = name === 'cd' || (powershell && ['cd', 'chdir', 'sl', 'set-location', 'pushd', 'push-location'].includes(name.toLowerCase()));
+    if (moves) {
+      // PowerShell names the folder after -Path or -LiteralPath, or by itself.
+      dirs.push(rest.find((w) => !(powershell && /^-(?:literal)?path$/i.test(w))) ?? '~');
     } else if (name === 'gh' && rest[0] === 'pr' && (rest[1] === 'create' || rest[1] === 'ready')) {
       const after = rest.slice(2);
       const repo = flagOf(after, '--repo', '-R');

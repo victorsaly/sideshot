@@ -850,6 +850,11 @@ describe('checkOf', () => {
     assert.match(lines.join('\n'), /missing {2}Playwright's Chromium\n {9}npx playwright install chromium/);
     assert.doesNotMatch(checkOf({ ...here, playwright: null, packageJson: false }).lines.join('\n'), /npm i -D/);
   });
+  it('says when the sign-in that is there was refused', () => {
+    const { lines, all } = checkOf({ ...here, signedIn: false, refused: true });
+    assert.equal(all, false);
+    assert.match(lines.join('\n'), /missing {2}A sign-in to Azure DevOps, to publish \(the one here was refused/);
+  });
   it('asks for gh on GitHub, and can take pictures without a sign-in or a host', () => {
     const hub = checkOf({ ...here, host: 'github', signedIn: false });
     assert.match(hub.lines.join('\n'), /gh auth login/);
@@ -893,6 +898,19 @@ describe('pushOf', () => {
     assert.equal(pushOf('gh pr create --repo=o/r --fill').repo, 'o/r');
     // gh pr create's own arguments are flags and their values, never a pull request.
     assert.equal(pushOf('gh pr create --title "Pricing" --fill').pr, null);
+  });
+  it('keeps a Windows path whole in a PowerShell command, where a backslash is not an escape', () => {
+    const powershell = { powershell: true };
+    assert.deepEqual(pushOf('cd "C:\\src\\site"; git push', powershell).dirs, ['C:\\src\\site']);
+    assert.deepEqual(pushOf('git -C C:\\src\\site push -u origin feature', powershell).dirs, ['C:\\src\\site']);
+    assert.deepEqual(pushOf('Set-Location -Path C:\\src\\site; git push', powershell).dirs, ['C:\\src\\site']);
+    // A backtick carries a line on, and keeps the character after it.
+    assert.deepEqual(pushOf('az repos pr create `\r\n  --title "A `"quoted`" title"', powershell), { dirs: [], pr: null, repo: null });
+    // Read as Bash, the same words lose their backslashes: why the hook says which shell ran them.
+    assert.deepEqual(pushOf('cd "C:\\src\\site"; git push').dirs, ['C:srcsite']);
+  });
+  it('carries a line on after a backslash in Bash', () => {
+    assert.deepEqual(pushOf('git \\\n  push'), { dirs: [], pr: null, repo: null });
   });
   it('is null for a command that pushes nothing', () => {
     for (const command of ['git status', 'git push --tags', 'cd site', 'gh pr view 12']) assert.equal(pushOf(command), null, command);
