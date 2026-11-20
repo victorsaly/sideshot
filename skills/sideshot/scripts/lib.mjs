@@ -163,6 +163,13 @@ export function azurePrOf(listed) {
   return own.length === 1 ? String(own[0].pullRequestId) : null;
 }
 
+/** The files a pull request on Azure DevOps changes, from the changes of its newest iteration: paths as git says
+ * them (no leading slash), folders left out. */
+export const azureFilesOf = (changes) =>
+  (Array.isArray(changes?.changeEntries) ? changes.changeEntries : [])
+    .filter((c) => c?.item && !c.item.isFolder && typeof c.item.path === 'string')
+    .map((c) => c.item.path.replace(/^\/+/, ''));
+
 /** A picture's name as an attachment of its pull request: what it holds first, since a pull request takes a name
  * once, so a picture taken again under the same name is a new attachment, and the same picture is not sent twice. */
 export const attachmentNameOf = (file, hash) => `${hash.slice(0, 12)}-${file}`;
@@ -186,6 +193,40 @@ const azureDescriptionMost = 4000;
 export function describedWith(description, words) {
   const next = bodyWith(String(description ?? ''), words);
   return next.length <= azureDescriptionMost ? next : null;
+}
+
+/** What --check says: each thing SideShot needs on this machine, there or not, and for what is not, the command
+ * that adds it. Taking pictures needs Node, Playwright and its browser; publishing also needs a sign-in to where
+ * origin is. ready is whether pictures can be taken; all, whether they can be published too. */
+export function checkOf({ node, playwright, browser, packageJson, host, signedIn, ignored, windows = false }) {
+  const lines = [];
+  const say = (ok, what, fix) => lines.push(ok ? `ok       ${what}` : `missing  ${what}\n         ${fix.join('\n         ')}`);
+  const nodeOk = Number(String(node).split('.')[0]) >= 22;
+  say(nodeOk, `Node ${node}${nodeOk ? '' : ' (22 or later is needed)'}`, ['Install Node 22 or later: https://nodejs.org']);
+  const add = packageJson
+    ? [
+        'For this project (changes package.json): npm i -D playwright && npx playwright install chromium',
+        'Or for you alone, nothing in the project: npm i -g playwright && npx playwright install chromium',
+      ]
+    : ['npm i -g playwright && npx playwright install chromium'];
+  const whose = playwright === 'project' ? "the project's" : 'installed globally';
+  say(playwright !== null, playwright === null ? 'Playwright' : `Playwright (${whose})`, add);
+  if (playwright !== null) say(browser, "Playwright's Chromium", ['npx playwright install chromium']);
+  if (host === 'azure')
+    say(signedIn, 'A sign-in to Azure DevOps, to publish', [
+      'az login',
+      `Without the Azure CLI: ${windows ? 'winget install Microsoft.AzureCLI' : 'https://aka.ms/install-azure-cli'}, then az login`,
+      'Or a personal access token with Code (read and write) in AZURE_DEVOPS_EXT_PAT',
+    ]);
+  else if (host === 'github')
+    say(signedIn, 'The GitHub CLI, signed in, to publish', [
+      'gh auth login',
+      `Without the GitHub CLI: ${windows ? 'winget install GitHub.cli' : 'https://cli.github.com'}, then gh auth login`,
+    ]);
+  else lines.push('note     origin is not on GitHub or Azure DevOps: pictures can be taken, not published.');
+  say(ignored, '.sideshot/ in .gitignore', ['Add a line to .gitignore: .sideshot/']);
+  const ready = nodeOk && playwright !== null && browser === true;
+  return { lines, ready, all: ready && ignored && (host === null || signedIn) };
 }
 
 /** .sideshot.json, read: an object of defaults, or a UsageError that says what is wrong with it. */
@@ -331,6 +372,12 @@ export function optionsOf(args, config = {}) {
     throw new UsageError(`Cannot use --branch ${branch}. Use a branch name like sideshot or shots/ui.`);
 
   const page = one('--page', 'page', '/');
+  // Git Bash on Windows rewrites a word that starts with / into a folder under where Git is installed.
+  if (/^[A-Za-z]:[\\/]/.test(page))
+    throw new UsageError(
+      `--page ${page} is a folder on this machine, not a page: Git Bash rewrote it. Run with MSYS_NO_PATHCONV=1 ` +
+        'before the command, or put "page" in .sideshot.json.',
+    );
   const updatePr = args.includes('--update-pr');
   const publish = updatePr || args.includes('--publish');
   // The pictures already taken, published as they were looked at, rather than taken again.
@@ -506,6 +553,10 @@ Running
                            signed in with az login or AZURE_DEVOPS_EXT_PAT)
   --reuse                  with --publish or --update-pr: the pictures already taken, as they are
   --branch name            the picture branch, which never merges (default sideshot)
+
+Before the first run
+  --check                  says what SideShot needs on this machine and what is missing, with the command
+                           that adds each (Playwright, its browser, a sign-in to publish); changes nothing
 
 Cleaning up
   --prune                  take off the picture branch the pictures of pull requests closed or merged
@@ -814,6 +865,9 @@ export function pushOf(command) {
       const named = after.find((w, i) => !w.startsWith('-') && !['--repo', '-R'].includes(after[i - 1]));
       const pr = rest[1] === 'ready' ? (named ?? null) : null;
       return { dirs, pr, repo };
+    } else if (name === 'az' && rest[0] === 'repos' && rest[1] === 'pr' && rest[2] === 'create') {
+      // On Azure DevOps the pull request opened is this branch's, found as after a push.
+      return { dirs, pr: null, repo: null };
     } else if (name === 'git') {
       const here = [...dirs];
       let i = 0;

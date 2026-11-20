@@ -3,6 +3,17 @@
 Read only what the page in front of you needs. Every option is in `node <this skill's folder>/scripts/sideshot.mjs
 --help`.
 
+## Contents
+
+- "Before" from `main`, run locally
+- Azure DevOps
+- Pages whose data only exists in production
+- Devices
+- `.sideshot.json`
+- What is hidden
+- What the pictures carry
+- When a run is slow or wrong
+
 ## "Before" from `main`, run locally
 
 When production cannot show the page as it needs (behind a login, or showing different data), run `main` beside
@@ -20,6 +31,8 @@ publishing differs:
 - **Where the table goes:** a comment of SideShot's own on the pull request, replaced on every run and posted as
   closed, so it never holds a merge that wants every comment resolved. A description holds only 4000 characters;
   it gets one line saying where the pictures are, when that fits.
+- **The reminder** after a push or `az repos pr create` (the Claude Code plugin) signs in the same way, and looks
+  for that comment.
 
 ## Pages whose data only exists in production
 
@@ -35,6 +48,11 @@ export default async (page, { when, device, scheme }) => {
 
 Use the same stand-ins for both sides, and say in the PR that the data is stood in. The module is the project's
 own code and runs as it is.
+
+The same module puts a page in a state its data does not reach (an order already cancelled, an error from the
+API): answer the one request that decides it with `page.route`, or change what the page starts with in
+`page.addInitScript`. One written for a single pull request need not be kept in the repository: `--setup` takes
+a path anywhere.
 
 ## Devices
 
@@ -95,4 +113,7 @@ customers, stand-in data (above) is the sure way: what is not on the page cannot
 - **Not done drawing.** Each part gets `--wait` (1500 ms) once it is in view, then until its animations end and
   its height holds. A chart or a font that comes late: `--wait 3000`.
 - **Pages that never go quiet** (they poll) are fine: the network is waited on briefly, not until it stops.
+- **On Windows, in Git Bash**, `--page /pricing` reaches the script as a folder (`C:/Program Files/Git/pricing`),
+  and the run says so: put `MSYS_NO_PATHCONV=1` before the command, or keep `page` in `.sideshot.json`.
+  PowerShell leaves it alone.
 - **A press that misses** on one side (a button that is new or gone) is said, and that side is pictured as it is.

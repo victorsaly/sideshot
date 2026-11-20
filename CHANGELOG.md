@@ -11,6 +11,14 @@
 - **It signs in as you do:** `az login`, a personal access token in `AZURE_DEVOPS_EXT_PAT`, or a pipeline's
   `SYSTEM_ACCESSTOKEN`. Without one it stops before taking anything, and says how. What Azure DevOps refuses is
   said in a sentence, with what to do.
+- **The reminder works there too**, and in PowerShell: after a push or `az repos pr create`, the Claude Code
+  plugin looks at the branch's pull request on Azure DevOps, and reminds when it changes what people see and has no
+  SideShot comment yet.
+- **`--check` says what is missing on this machine, and the command that adds it:** Node, Playwright and its
+  Chromium, the sign-in to publish (GitHub CLI, or Azure CLI or a token), and `.sideshot/` in `.gitignore`. It
+  changes nothing; the skill has the agent run it first in a project, and ask before installing.
+- **On Windows, a `--page` that Git Bash rewrote into a folder is refused**, with what to do, where it used to
+  picture a page that is not there. Signing in with the Azure CLI no longer prints a warning from Node.
 - **`--prune` has nothing to do on Azure DevOps**, where the pictures go with their pull request, and says so.
 
 ## 0.8.0 (2026-11-17)

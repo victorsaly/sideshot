@@ -16,6 +16,8 @@ import {
   fileNameOf,
   isBranchName,
   isPicture,
+  azureFilesOf,
+  checkOf,
   isPrPush,
   label,
   splitNote,
@@ -294,6 +296,8 @@ describe('optionsOf', () => {
   });
   it('refuses a branch git would read as an option', () => {
     refused([...base, '--branch', '--upload-pack=touch /tmp/x'], /Cannot use --branch/);
+    // What Git Bash on Windows makes of --page /pricing.
+    refused([...base, '--page', 'C:/Program Files/Git/pricing'], /Git Bash rewrote it/);
     refused(base, /Cannot use --branch/, { branch: '-x' });
   });
   it('takes a scheme given twice once, so no two pictures share a file', () => {
@@ -767,6 +771,7 @@ describe('isPrPush', () => {
       'gh pr create --fill',
       'gh pr create --title "Pricing" --body-file pr.md',
       'gh pr ready 12',
+      'az repos pr create --source-branch feature --target-branch dev --title "Pricing"',
     ])
       assert.equal(isPrPush(command), true, command);
   });
@@ -793,6 +798,59 @@ describe('isPrPush', () => {
   it('still finds the push after a quoted argument, and around a redirect', () => {
     for (const command of ['git commit -m "Restyle; cards" && git push', 'git push 2>&1 | tail -3', "git commit -m 'a' ; git push"])
       assert.equal(isPrPush(command), true, command);
+  });
+});
+
+describe('checkOf', () => {
+  const here = { node: '22.3.0', playwright: 'project', browser: true, packageJson: true, host: 'azure', signedIn: true, ignored: true };
+  it('says everything is there when it is', () => {
+    const { lines, ready, all } = checkOf(here);
+    assert.ok(ready && all);
+    assert.ok(lines.every((l) => l.startsWith('ok')), lines.join('\n'));
+  });
+  it('gives the command for each thing missing', () => {
+    const none = checkOf({ ...here, node: '20.1.0', playwright: null, browser: false, signedIn: false, ignored: false, windows: true });
+    assert.equal(none.ready, false);
+    const said = none.lines.join('\n');
+    assert.match(said, /22 or later/);
+    assert.match(said, /npm i -D playwright && npx playwright install chromium/);
+    assert.match(said, /npm i -g playwright && npx playwright install chromium/);
+    assert.match(said, /az login/);
+    assert.match(said, /winget install Microsoft\.AzureCLI/);
+    assert.match(said, /\.sideshot\/ in \.gitignore/);
+    // Its browser is asked for only once Playwright is there.
+    assert.doesNotMatch(said, /Playwright's Chromium/);
+  });
+  it('asks only for the browser when Playwright is there without one, globally for a project without Node', () => {
+    const { lines, ready } = checkOf({ ...here, playwright: 'global', browser: false, packageJson: false });
+    assert.equal(ready, false);
+    assert.match(lines.join('\n'), /installed globally/);
+    assert.match(lines.join('\n'), /missing {2}Playwright's Chromium\n {9}npx playwright install chromium/);
+    assert.doesNotMatch(checkOf({ ...here, playwright: null, packageJson: false }).lines.join('\n'), /npm i -D/);
+  });
+  it('asks for gh on GitHub, and can take pictures without a sign-in or a host', () => {
+    const hub = checkOf({ ...here, host: 'github', signedIn: false });
+    assert.match(hub.lines.join('\n'), /gh auth login/);
+    assert.match(hub.lines.join('\n'), /cli\.github\.com/);
+    assert.ok(hub.ready && !hub.all);
+    const nowhere = checkOf({ ...here, host: null, signedIn: false });
+    assert.match(nowhere.lines.join('\n'), /not published/);
+    assert.ok(nowhere.all);
+  });
+});
+
+describe('azureFilesOf', () => {
+  it('names the files a pull request changes as git does, without the folders', () => {
+    const changes = {
+      changeEntries: [
+        { item: { path: '/src/app', isFolder: true } },
+        { item: { path: '/src/app/Header.jsx' } },
+        { item: { path: '/README.md' } },
+        {},
+      ],
+    };
+    assert.deepEqual(azureFilesOf(changes), ['src/app/Header.jsx', 'README.md']);
+    assert.deepEqual(azureFilesOf(null), []);
   });
 });
 

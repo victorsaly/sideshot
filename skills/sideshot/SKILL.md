@@ -15,6 +15,13 @@ branch that never merges, with a table in the PR description. The script is `scr
 file (in Claude Code, `${CLAUDE_SKILL_DIR}`); run it with Node from the project's folder. `--help` says every
 option, so there is no need to read the script.
 
+## First, what this machine has
+
+Run `--check` yourself before the first pictures in a project, and whenever a run says something is missing. Do
+not hand the person the command or its output. Tell them, in the chat and in plain words, what is missing and what
+you would run to add each (naming anything that changes the project, such as its `package.json` or `.gitignore`),
+and ask which to go ahead with. Run what they agree to, run `--check` again, and carry on with the pictures.
+
 ## 1. Decide what to picture, from the diff
 
 - **The page** the change shows on (`--page /pricing`), one run per page.
@@ -25,6 +32,9 @@ option, so there is no need to read the script.
   the user names them (`--devices`; desk and phone otherwise).
 - **What to say on the picture**: two or three `--note "selector=what changed"` (a numbered ring, its words under
   the table), and `--mark-changes` to box whatever else differs.
+- **A state the page must be in first** (a status, an error, a refused action) that the local data does not
+  reach: set it up with `--setup` ([reference.md](reference.md)), the same on both sides, and say in the PR that
+  it was set up. "The data cannot show it" is seldom a reason for no pictures.
 - **A new feature**, with nothing before it to compare (a new page, section or component): a part not there
   before is shown by itself, as it is, with nothing drawn on it, and the table says what's new. When you know it is
   all new, `--new` does that sooner, without opening before (no `--before`, `--note` or `--mark-changes`).
@@ -65,6 +75,10 @@ DevOps it uploads them to the PR and puts the table in a comment of its own inst
 [reference.md](reference.md). This writes to the repository: do it only for the user's own PR, and tell them, with
 the link.
 
+Before saying the pull request is ready, check that the table is on it. The same pictures stay in
+`.sideshot/<pr>/`, with the table in `table.md`: use those for anywhere else the change is reviewed (a ticket, or
+a paired back-end pull request whose effect is what these pictures show), not a second set taken another way.
+
 ## 4. Clean up old pictures
 
 Every pull request adds a folder of pictures to the `sideshot` branch, and nothing takes them off by itself. When
@@ -82,8 +96,8 @@ again then.
 
 ## Things to know
 
-- **Playwright** comes from the project, or from a global install for a project without Node. If there is none,
-  the script says so: ask before adding it.
+- **Playwright** comes from the project, or from a global install (for a project without Node, or to leave the
+  project's `package.json` as it is).
 - **Add `.sideshot/` to `.gitignore`.**
 - **What is private is covered on every picture**, before it is kept: email addresses, card numbers, IBANs, keys
   and tokens, and form fields whose `autocomplete` says they hold a phone, an address or a name. The run says how

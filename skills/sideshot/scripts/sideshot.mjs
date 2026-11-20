@@ -14,7 +14,7 @@
 // Needs Playwright: the project's own, or one installed globally for a project without Node of its own.
 /* global document, getComputedStyle, scrollX, scrollY, window, Node, NodeFilter -- only in the functions picture() and
    hiddenOn() hand to the page, which run there. */
-import { execFileSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   cpSync,
@@ -41,6 +41,7 @@ import {
   azureOf,
   azurePrOf,
   bodyWith,
+  checkOf,
   describedWith,
   configOf,
   bareOf,
@@ -175,11 +176,11 @@ function azureSignIn() {
   azureAuth = azureAuthOf(process.env);
   if (azureAuth === null) {
     try {
-      const token = execFileSync(
-        'az',
-        ['account', 'get-access-token', '--resource', azureDevOps, '--query', 'accessToken', '-o', 'tsv'],
-        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], shell: process.platform === 'win32' },
-      ).trim();
+      // One line of fixed words through a shell: az is az.cmd on Windows, which only a shell runs.
+      const token = execSync(`az account get-access-token --resource ${azureDevOps} --query accessToken -o tsv`, {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim();
       if (token !== '') azureAuth = `Bearer ${token}`;
     } catch {
       // No Azure CLI, or not signed in: said where a sign-in is needed.
@@ -187,6 +188,83 @@ function azureSignIn() {
   }
   return azureAuth;
 }
+
+/** Playwright's Chromium, and where Playwright was found: the project's, else one installed globally. Throws when
+ * there is none. */
+async function playwrightOf() {
+  const require = createRequire(join(root, 'package.json'));
+  let found;
+  let where = 'project';
+  try {
+    found = require.resolve('playwright');
+  } catch {
+    // One line of fixed words through a shell: npm is npm.cmd on Windows, which only a shell runs.
+    const globalModules = execSync('npm root -g', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    found = require.resolve(join(globalModules, 'playwright'));
+    where = 'global';
+  }
+  const playwright = await import(pathToFileURL(found).href);
+  // Loaded as CommonJS, its exports may sit under default.
+  const browserType = playwright.chromium ?? playwright.default?.chromium;
+  if (!browserType) throw new Error('no chromium in playwright');
+  return { chromium: browserType, where };
+}
+
+/** --check: what SideShot needs on this machine, looked for and said, with nothing changed. Exit 0 when pictures can
+ * be taken and published, 2 when something is missing. */
+async function checking() {
+  let playwright = null;
+  let browser = false;
+  try {
+    const found = await playwrightOf();
+    playwright = found.where;
+    try {
+      await (await found.chromium.launch()).close();
+      browser = true;
+    } catch {
+      // No browser for this Playwright: said, with the command that adds it.
+    }
+  } catch {
+    // No Playwright: said, with the command that adds it.
+  }
+  const host = azure ? 'azure' : slugOf(remote) ? 'github' : null;
+  let signedIn = false;
+  if (host === 'azure') signedIn = azureSignIn() !== null;
+  else if (host === 'github') {
+    try {
+      execFileSync('gh', ['auth', 'status', '--hostname', 'github.com'], { stdio: 'ignore' });
+      signedIn = true;
+    } catch {
+      // No gh, or not signed in.
+    }
+  }
+  let ignored = true;
+  try {
+    git(['check-ignore', '-q', '.sideshot/x'], root);
+  } catch {
+    ignored = false;
+  }
+  const { lines, ready, all } = checkOf({
+    node: process.versions.node,
+    playwright,
+    browser,
+    packageJson: existsSync(join(root, 'package.json')),
+    host,
+    signedIn,
+    ignored,
+    windows: process.platform === 'win32',
+  });
+  console.info(lines.join('\n'));
+  console.info(
+    all
+      ? '\nEverything SideShot needs is here.'
+      : ready
+        ? '\nPictures can be taken; see above for what is left.'
+        : '\nNot ready yet: run what is said above (ask the person first), then --check again.',
+  );
+  process.exit(all ? 0 : 2);
+}
+if (args.includes('--check')) await checking();
 
 /** What Azure DevOps refused, said in a sentence without a stack. */
 class AzureRefusal extends Error {}
@@ -361,22 +439,7 @@ if (silent.length > 0) {
 // Node of its own (Python, Ruby, Go, a static site) can use one installed globally instead.
 let chromium;
 try {
-  const require = createRequire(join(root, 'package.json'));
-  let found;
-  try {
-    found = require.resolve('playwright');
-  } catch {
-    const globalModules = execFileSync('npm', ['root', '-g'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-      shell: process.platform === 'win32',
-    }).trim();
-    found = require.resolve(join(globalModules, 'playwright'));
-  }
-  const playwright = await import(pathToFileURL(found).href);
-  // Loaded as CommonJS, its exports may sit under default.
-  chromium = playwright.chromium ?? playwright.default?.chromium;
-  if (!chromium) throw new Error('no chromium in playwright');
+  ({ chromium } = await playwrightOf());
 } catch {
   console.error(
     'Playwright is not installed, in this project or globally. Add it, then its browser:\n' +

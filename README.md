@@ -40,7 +40,8 @@ branch.</p>
 **What it needs:** Node 22 or later and git; Playwright with its Chromium, in the project or installed globally (your
 agent asks before adding it); and, to put the pictures in a pull request, the GitHub CLI (`gh`), signed in, or on
 Azure DevOps, the Azure CLI signed in (`az login`) or a personal access token. It works on any site you can open in a
-browser, whatever it is built with.
+browser, whatever it is built with. `--check` says which of these a machine has, and the command that adds each
+one missing; your agent runs it the first time, and asks before installing.
 
 One skill, any coding agent that reads [Agent Skills](https://skills.sh):
 
