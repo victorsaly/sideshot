@@ -8,6 +8,8 @@
   SideShot's own. The comment is replaced on every run, and posted as closed, so a policy that wants every comment
   resolved does not hold the merge on it; a description there holds only 4000 characters, so it gets one line
   saying where the pictures are, when that fits. The pull request is found for the branch, as on GitHub.
+- **Only an address of Azure DevOps' own is passed on** for a picture: what it answers for an upload goes into
+  the comment and `table.md` only when it is an attachment on the machine that was asked.
 - **It signs in as you do:** `az login`, a personal access token in `AZURE_DEVOPS_EXT_PAT`, or a pipeline's
   `SYSTEM_ACCESSTOKEN`. Without one it stops before taking anything, and says how. What Azure DevOps refuses is
   said in a sentence, with what to do.

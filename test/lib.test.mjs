@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   UsageError,
+  attachmentLinkOf,
   attachmentNameOf,
   azureApiOf,
   azureAuthOf,
@@ -801,6 +802,27 @@ describe('isPrPush', () => {
   });
 });
 
+describe('attachmentLinkOf', () => {
+  const api = 'https://dev.azure.com/fabrikam/Web%20Shop/_apis/git/repositories/storefront';
+  const own = 'https://dev.azure.com/fabrikam/0f1e/_apis/git/repositories/9a8b/pullRequests/7/attachments/0123456789ab-card-desk-after.png';
+  it('passes on an attachment of Azure DevOps\' own', () => {
+    assert.equal(attachmentLinkOf(own, api), own);
+  });
+  it('is null for an address anywhere else, or that is not an attachment', () => {
+    for (const url of [
+      own.replace('dev.azure.com', 'dev.azure.com.example.org'),
+      own.replace('https:', 'http:'),
+      `${own}?download=1`,
+      `${own}#x`,
+      'https://dev.azure.com/fabrikam/_git/storefront',
+      'javascript:alert(1)',
+      undefined,
+    ])
+      assert.equal(attachmentLinkOf(url, api), null, String(url));
+    assert.equal(attachmentLinkOf(own, 'not an address'), null);
+  });
+});
+
 describe('checkOf', () => {
   const here = { node: '22.3.0', playwright: 'project', browser: true, packageJson: true, host: 'azure', signedIn: true, ignored: true };
   it('says everything is there when it is', () => {
@@ -831,7 +853,7 @@ describe('checkOf', () => {
   it('asks for gh on GitHub, and can take pictures without a sign-in or a host', () => {
     const hub = checkOf({ ...here, host: 'github', signedIn: false });
     assert.match(hub.lines.join('\n'), /gh auth login/);
-    assert.match(hub.lines.join('\n'), /cli\.github\.com/);
+    assert.ok(hub.lines.join('\n').includes('Without the GitHub CLI: https://cli.github.com, then gh auth login'));
     assert.ok(hub.ready && !hub.all);
     const nowhere = checkOf({ ...here, host: null, signedIn: false });
     assert.match(nowhere.lines.join('\n'), /not published/);

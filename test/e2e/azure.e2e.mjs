@@ -41,12 +41,12 @@ const azure = () => {
         return json(200, { pullRequestId: 7 });
       }
       if (path === `${pr}/attachments` && req.method === 'GET')
-        return json(200, { value: [...state.attachments.keys()].map((name) => ({ displayName: name, url: `https://att.example/${name}` })) });
+        return json(200, { value: [...state.attachments.keys()].map((name) => ({ displayName: name, url: `http://${req.headers.host}/fabrikam/p1/_apis/git/repositories/r1/pullRequests/7/attachments/${name}` })) });
       if (path?.startsWith(`${pr}/attachments/`) && req.method === 'POST') {
         const name = decodeURIComponent(path.slice(`${pr}/attachments/`.length));
         if (state.attachments.has(name)) return json(409, { message: 'exists' });
         state.attachments.set(name, body);
-        return json(201, { displayName: name, url: `https://att.example/${name}` });
+        return json(201, { displayName: name, url: `http://${req.headers.host}/fabrikam/p1/_apis/git/repositories/r1/pullRequests/7/attachments/${name}` });
       }
       if (path === `${pr}/threads` && req.method === 'GET') return json(200, { value: state.threads });
       if (path === `${pr}/threads` && req.method === 'POST') {

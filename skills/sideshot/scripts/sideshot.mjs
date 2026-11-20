@@ -34,6 +34,7 @@ import { cover, finish, pickAccent, sheet, strike } from './draw.mjs';
 import { fieldKindOf, hiddenIn, hiddenSaidOf, masksOf, sensitiveIn } from './hide.mjs';
 import {
   UsageError,
+  attachmentLinkOf,
   attachmentNameOf,
   azureApiOf,
   azureAuthOf,
@@ -1008,7 +1009,10 @@ async function publishingOnAzure(pictures, { same, nothing, whole = [], texts = 
     for (const f of pictures) {
       const bytes = readFileSync(join(out, f));
       const name = attachmentNameOf(f, createHash('sha1').update(bytes).digest('hex'));
-      links[f] = kept.get(name) ?? (await azureCall('POST', `${at}/attachments/${encodeURIComponent(name)}`, bytes, 'application/octet-stream')).url;
+      const given = kept.get(name) ?? (await azureCall('POST', `${at}/attachments/${encodeURIComponent(name)}`, bytes, 'application/octet-stream')).url;
+      // Only an address of Azure DevOps' own goes into the comment and table.md.
+      links[f] = attachmentLinkOf(given, azureApi);
+      if (links[f] === null) throw new AzureRefusal(`Azure DevOps gave an address for ${f} that is not one of its attachments`);
     }
     table = tableOf({ parts, chosen, schemes, notes, files: new Set(readdirSync(out)), before, after, page, slug, branch, pr, same, markChanges, whole, texts, loupes, onlyNew, drawn, links });
   } else {

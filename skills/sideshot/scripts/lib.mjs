@@ -174,6 +174,19 @@ export const azureFilesOf = (changes) =>
  * once, so a picture taken again under the same name is a new attachment, and the same picture is not sent twice. */
 export const attachmentNameOf = (file, hash) => `${hash.slice(0, 12)}-${file}`;
 
+/** The address Azure DevOps gave for an uploaded picture, when it is one of its own: on the machine that was asked
+ * (api), under its API, and an attachment. Anything else is null: the address goes into the pull request and
+ * table.md, so one that points elsewhere is not passed on. */
+export function attachmentLinkOf(url, api) {
+  try {
+    const given = new URL(String(url));
+    const ok = given.origin === new URL(api).origin && /\/_apis\/git\/repositories\/[^/]+\/pullRequests\/\d+\/attachments\/[^/?#]+$/.test(given.pathname);
+    return ok && given.search === '' && given.hash === '' ? given.href : null;
+  } catch {
+    return null;
+  }
+}
+
 /** SideShot's own comment on an Azure DevOps pull request, from its threads: the first comment of a thread, opened
  * between the markers, neither deleted. null when there is none yet. */
 export function ownThreadOf(threads) {
